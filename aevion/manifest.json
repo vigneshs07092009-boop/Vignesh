@@ -1,0 +1,15 @@
+{
+  "name": "Aevion — Private AI Assistant",
+  "short_name": "Aevion",
+  "description": "Local-first private AI assistant: chat, voice, study tools, files, automations. No account, no tracking.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0e1a",
+  "theme_color": "#0a0e1a",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
