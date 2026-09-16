@@ -26,7 +26,7 @@ See **[docs/ANDROID-APK.md](docs/ANDROID-APK.md)** — wrap this exact same code
 
 | Module | What it does |
 |---|---|
-| 💬 Assistant | Local intent brain (math, time, memory, jokes…), optional online AI (Ollama = 100% free & local, or any OpenAI-compatible endpoint) |
+| 💬 Assistant | Local intent brain (math, time, memory, jokes…), **in-browser AI model** (WebLLM on your GPU — fully offline, no API keys), optional online AI (Ollama or any OpenAI-compatible endpoint) |
 | 🎤 Voice | Speech-to-text + text-to-speech using your device's built-in engines. No cloud wake-word. Tap-to-talk (privacy-first). |
 | 🌐 Translation | Multilingual chat + "translate X to Tamil/Hindi/…" via browser service (opt-in) |
 | 🎓 Studio | Quiz generator, offline summarizer, flashcard decks, pomodoro focus timer, code language notes, code profiler |
@@ -80,7 +80,7 @@ Add `<script src="js/plugins/my-skill.js"></script>` to `index.html` (after `app
 
 ## 🗺️ Roadmap
 
-Wake-word, SQLite/IndexedDB storage engine, WebLLM (in-browser LLM), Node.js companion with real OS automation, end-to-end encrypted sync, APK via Capacitor. Full list: **[docs/ROADMAP.md](docs/ROADMAP.md)**
+Wake-word, SQLite/IndexedDB storage engine, Node.js companion with real OS automation, end-to-end encrypted sync. Full list: **[docs/ROADMAP.md](docs/ROADMAP.md)**
 
 ## 📄 License
 

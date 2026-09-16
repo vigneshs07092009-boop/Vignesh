@@ -84,8 +84,30 @@
 
     const route = Aevion.brain.route(text);
 
-    // open conversation → online AI if user enabled it, else local fallback
+    // open conversation → in-browser model, else online AI, else local fallback
     if (route.kind === 'chat' || route.kind === 'math-maybe') {
+      // 1st choice: in-browser model (works offline, private by design)
+      if (Aevion.settings.webllm && Aevion.webllm.isReady()) {
+        const el = addMsg('ai', '…', 'LOCAL MODEL');
+        try {
+          const msgs = [{ role: 'system', content: Aevion.online.systemPrompt() }];
+          history().slice(-10).forEach(h => msgs.push({ role: h.role === 'ai' ? 'assistant' : 'user', content: h.text }));
+          let lastPaint = 0;
+          const full = await Aevion.webllm.chatStream(msgs, (_d, fullText) => {
+            const now = Date.now();
+            if (now - lastPaint > 60) { lastPaint = now; el.textContent = fullText; log.scrollTop = log.scrollHeight; }
+          });
+          el.textContent = full;
+          pushHistory('ai', full);
+          Aevion.voice.speak(full);
+          log.scrollTop = log.scrollHeight;
+          return;
+        } catch (e) {
+          el.remove();
+          addMsg('ai', '⚠ In-browser model failed: ' + e.message + ' — trying next option…', 'error');
+        }
+      }
+      // 2nd choice: online AI if user enabled it
       if (Aevion.settings.onlineAI) {
         const thinking = addMsg('ai', '…thinking via your AI endpoint…', 'ONLINE AI');
         try {
@@ -463,6 +485,8 @@
     $('#setOnlineAI').checked = !!s.onlineAI; $('#setAIProvider').value = s.aiProvider;
     $('#setAIUrl').value = s.aiUrl; $('#setAIModel').value = s.aiModel; $('#setAIKey').value = s.aiKey;
     $('#setOnlineSearch').checked = !!s.onlineSearch; $('#setMemory').checked = !!s.memory;
+    $('#setWebllm').checked = !!s.webllm; wSel.value = s.webllmModel || wSel.options[0].value;
+    webllmCapText();
     $('#setPinOn').checked = !!s.pinOn;
   }
 
@@ -508,6 +532,61 @@
   $('#setAIKey').onchange = e => Aevion.set('aiKey', e.target.value.trim());
   $('#setOnlineSearch').onchange = e => Aevion.set('onlineSearch', e.target.checked);
   $('#setMemory').onchange = e => Aevion.set('memory', e.target.checked);
+
+  // in-browser AI (WebLLM)
+  const wSel = $('#setWebllmModel');
+  Aevion.webllm.detect().then(() => {
+    const cur = Aevion.settings.webllmModel;
+    wSel.innerHTML = '';
+    Aevion.webllm.availableModels().forEach(m => {
+      const o = document.createElement('option'); o.value = m.id; o.textContent = m.label; wSel.appendChild(o);
+    });
+    // keep saved model if this GPU can run it, else fall back to first compatible
+    if (![...wSel.options].some(o => o.value === cur)) Aevion.set('webllmModel', wSel.options[0].value);
+    wSel.value = Aevion.settings.webllmModel;
+  });
+  function webllmCapText() {
+    const el = $('#webllmCap');
+    if (!Aevion.webllm.gpuSupported()) {
+      el.textContent = '⚠ WebGPU not available in this browser — use Chrome or Edge 113+ (Windows: update; Android: Chrome 121+).';
+      return false;
+    }
+    el.textContent = '✅ WebGPU available — in-browser models ready to load.';
+    return true;
+  }
+  $('#setWebllm').onchange = e => {
+    Aevion.set('webllm', e.target.checked);
+    if (e.target.checked && !Aevion.webllm.isReady()) {
+      $('#webllmOut').textContent = 'Model not loaded yet — click “Download & load” below.';
+    }
+    toast(e.target.checked ? 'In-browser AI enabled' : 'In-browser AI disabled');
+  };
+  wSel.onchange = () => Aevion.set('webllmModel', wSel.value);
+  $('#webllmLoad').onclick = async () => {
+    if (!webllmCapText()) return;
+    const modelId = wSel.value;
+    const modelDef = Aevion.webllm.MODELS.find(m => m.id === modelId);
+    if (modelDef && modelDef.requiresF16 && Aevion.webllm.f16 === false) {
+      $('#webllmOut').textContent = '❌ This model needs shader-f16 (newer GPU). Pick a q4f32 model instead.';
+      return;
+    }
+    const out = $('#webllmOut');
+    $('#webllmLoad').disabled = true;
+    try {
+      await Aevion.webllm.load(modelId, p => {
+        out.textContent = `${Math.round((p.progress || 0) * 100)}% — ${p.text || ''}`;
+      });
+      out.textContent = '✅ ' + modelId + ' loaded and cached. Chat now uses this model (toggle above).';
+      toast('🧠 Model ready — fully offline now');
+    } catch (e) {
+      out.textContent = '❌ Load failed: ' + e.message;
+    }
+    $('#webllmLoad').disabled = false;
+  };
+  $('#webllmUnload').onclick = async () => {
+    await Aevion.webllm.unload();
+    $('#webllmOut').textContent = 'Model unloaded; GPU memory freed. Cached download is kept.';
+  };
 
   // permissions UI
   function renderPerms() {

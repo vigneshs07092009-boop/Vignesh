@@ -192,8 +192,8 @@
     const memLine = mem.length ? "\n\n(From memory: " + mem.slice(0, 2).map(i => i.text).join('; ') + ")" : '';
     return personaWrap(
       "I processed that locally. My offline brain handles math, time, memory, translation, study tools, " +
-      "and simple commands — for open conversation, connect an AI in Settings → Privacy (" +
-      "Ollama runs fully on your PC with zero cost) or ask me a skill I know." + memLine
+      "and simple commands — for open conversation, load an in-browser model in Settings (runs on your GPU, fully offline) " +
+      "or connect Ollama/any AI in Settings → Privacy, or ask me a skill I know." + memLine
     );
   };
 

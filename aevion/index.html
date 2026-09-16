@@ -7,8 +7,8 @@
 <title>Aevion — Private AI Assistant</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/themes.css?v=030">
-<link rel="stylesheet" href="css/style.css?v=030">
+<link rel="stylesheet" href="css/themes.css?v=041">
+<link rel="stylesheet" href="css/style.css?v=041">
 </head>
 <body>
 <div id="boot" class="boot">
@@ -239,6 +239,16 @@
     </div>
 
     <div class="card">
+      <h3>In-browser AI (WebLLM · WebGPU)</h3>
+      <p class="muted" id="webllmCap">Checking WebGPU…</p>
+      <div class="row"><label>Use in-browser model for chat</label><input type="checkbox" id="setWebllm"></div>
+      <div class="row"><label>Model</label><select id="setWebllmModel"></select></div>
+      <div class="row"><button id="webllmLoad" class="btn primary">Download &amp; load</button><button id="webllmUnload" class="btn">Unload (free memory)</button></div>
+      <div class="out" id="webllmOut"></div>
+      <p class="muted">First download fetches public model files once (~1–3 GB from Hugging Face) and caches them in this browser. After that the model runs fully offline on your GPU — nothing you type is ever sent anywhere.</p>
+    </div>
+
+    <div class="card">
       <h3>Security</h3>
       <div class="row"><label>PIN lock on start</label><input type="checkbox" id="setPinOn"></div>
       <div class="row"><input id="setPin1" type="password" inputmode="numeric" placeholder="New PIN (4-8 digits)"><button id="setPinSave" class="btn">Save PIN</button></div>
@@ -255,12 +265,13 @@
 
 <div id="toast"></div>
 
-<script src="js/core.js?v=030"></script>
-<script src="js/brain.js?v=030"></script>
-<script src="js/skills.js?v=030"></script>
-<script src="js/voice.js?v=030"></script>
-<script src="js/online.js?v=030"></script>
-<script src="js/app.js?v=030"></script>
-<script src="js/plugins/hello-world.js?v=030"></script>
+<script src="js/core.js?v=041"></script>
+<script src="js/brain.js?v=041"></script>
+<script src="js/skills.js?v=041"></script>
+<script src="js/voice.js?v=041"></script>
+<script src="js/online.js?v=041"></script>
+<script src="js/webllm.js?v=041"></script>
+<script src="js/app.js?v=041"></script>
+<script src="js/plugins/hello-world.js?v=041"></script>
 </body>
 </html>

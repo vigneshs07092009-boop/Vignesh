@@ -2,7 +2,7 @@
  * Aevion Core — storage, events, permissions, memory, crypto
  * ============================================================ */
 window.Aevion = {
-  version: '0.3.0',
+  version: '0.4.0',
   bus: new EventTarget(),
   emit(ev, data) { this.bus.dispatchEvent(new CustomEvent(ev, { detail: data })); },
   on(ev, fn) { this.bus.addEventListener(ev, fn); },
@@ -35,6 +35,7 @@ window.Aevion = {
     voiceURI: '', speak: false,
     onlineAI: false, aiProvider: 'ollama', aiUrl: 'http://localhost:11434/v1/chat/completions', aiModel: 'llama3.2', aiKey: '',
     onlineSearch: false, memory: true,
+    webllm: false, webllmModel: 'Llama-3.2-1B-Instruct-q4f16_1-MLC',
     pinOn: false, pinHash: '',
     pairHash: '', pairPub: '',
     perms: { notifications: false, geolocation: false, camera: false, microphone: false, clipboardWrite: false, automation: false, contacts_read: false, files_read: false, calendar_read: false },

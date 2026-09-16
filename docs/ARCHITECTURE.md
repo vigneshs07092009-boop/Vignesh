@@ -28,7 +28,10 @@
 │ online.js │     │           core.js            │
 │ gated API │     │ store · bus · perms · memory │
 └───────────┘     │        hash · identity       │
-                  └──────────────────────────────┘
+┌───────────┐     └──────────────────────────────┘
+│ webllm.js │  in-browser LLM (WebGPU), loads
+│ opt-in AI │  vendor/webllm.esm.js (Apache-2.0)
+└───────────┘
 ```
 
 ### core.js — foundation
@@ -40,6 +43,9 @@
 
 ### brain.js — the router
 Every message is matched against an ordered rule list → `kind`. Kinds map to handlers. Handlers return strings, or `null` to fall through to the local chat fallback. If the route is open conversation and the user enabled online AI, `app.js` first tries `Aevion.online.chat()` with a persona system prompt + last 10 turns + memory, and falls back to the local brain on any error.
+
+### webllm.js — the in-browser brain
+Runs a small instruct model (Llama 3.2 / Qwen 2.5 / Gemma / Phi, 1–3B, q4f16) on your GPU through WebGPU. The engine (`vendor/webllm.esm.js`, Apache-2.0) is vendored locally — no CDN. Model weights download once from the public mlc-ai Hugging Face mirrors, get cached in browser Cache storage, and from then on chat runs 100% offline on-device. `chatStream(messages, onToken)` streams tokens for live typing. Chat priority: WebLLM → online AI → local brain. If WebGPU is missing, the Settings card says so and everything else still works.
 
 ### online.js — the only door out
 A single `fetch` wrapper for OpenAI-compatible endpoints (`/v1/chat/completions`), which Ollama, LM Studio, llama.cpp server, vLLM and most providers speak. Throws unless `settings.onlineAI` is true. 60 s timeout via AbortController.

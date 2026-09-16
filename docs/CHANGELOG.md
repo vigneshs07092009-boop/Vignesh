@@ -1,5 +1,14 @@
 # Aevion — Technical Changelog
 
+## 0.4.0 — in-browser AI
+- **WebLLM integration**: run Llama 3.2 / Qwen 2.5 / Gemma 2 (1–3B) fully in the browser on your GPU via WebGPU. No server, no API keys, works offline after the one-time model download (~1–3 GB, cached by the browser).
+- **GPU capability detection**: probes `shader-f16`; q4f32 models (run on every WebGPU GPU) are default, q4f16 variants offered only on capable GPUs — avoids WGSL `enable f16` compile failures on older drivers.
+- Engine vendored at `vendor/webllm.esm.js` (Apache-2.0, @mlc-ai/web-llm 0.2.85) — zero CDN dependency.
+- New Settings card: capability check, model picker, download progress, load/unload, per-model cache tracking.
+- Chat pipeline now: **in-browser model → online AI (opt-in) → local brain**, with graceful fallback and error notices at each hop.
+- Streaming token rendering in the chat view (throttled to 60 ms).
+- Service worker caches the engine + module; versioned assets bumped to `?v=040`.
+
 ## 0.3.0 — first full build
 
 - **Modular core**: `core.js` (store/bus/perms/memory/hash), `brain.js` (intent routing + local NLU), `skills.js` (math/translate/summarize/quiz/code), `voice.js` (STT/TTS), `online.js` (gated OpenAI-compatible connector), `app.js` (UI).

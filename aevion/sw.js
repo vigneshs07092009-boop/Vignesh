@@ -3,7 +3,7 @@
  * Strategy: cache-first for app shell, network fallback.
  * Bump CACHE_VERSION when you change files to refresh clients.
  * ============================================================ */
-const CACHE_VERSION = 'aevion-v0.3.1';
+const CACHE_VERSION = 'aevion-v0.4.0';
 const ASSETS = [
   './',
   './index.html',
@@ -16,6 +16,8 @@ const ASSETS = [
   './js/skills.js',
   './js/voice.js',
   './js/online.js',
+  './js/webllm.js',
+  './vendor/webllm.esm.js',
   './js/app.js',
   './js/plugins/hello-world.js'
 ];
