@@ -125,3 +125,50 @@ jobs:
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           JAVA_HOME: ${{ env.JAVA_HOME }}
+
+      # 9. Encrypt the verbose build log with the symmetric key stored as a repo
+      #    secret, and upload it as a second artifact next to the APK. The log is
+      #    useless without the key, so the repo secret is the gate. If the secret is
+      #    not set yet, skip this step with a warning rather than failing the build.
+      #
+      #    Decrypt locally:
+      #      openssl enc -aes-256-cbc -d -base64 -in Aevion-build-log.enc -out build.log \
+      #        -pass pass:$(cat AEVION_LOG_KEY)
+      #    where AEVION_LOG_KEY is the value you store in the repo's secret store.
+      #    (The secret is never present in the YAML; the runner binds it at runtime.)
+      - name: Encrypt and upload the build log
+        if: always()
+        env:
+          LOG_KEY: ${{ secrets.AEVION_LOG_KEY }}
+        run: |
+          set -euo pipefail
+          LOG="build.log"
+          ENC="Aevion-build-log.enc"
+
+          echo "=== Aevion build log — run $GITHUB_RUN_ID (ID=$GITHUB_RUN_NUMBER) ===" > "$LOG"
+          echo "branch=$GITHUB_REF_NAME  sha=$GITHUB_SHA" >> "$LOG"
+          echo "workflow=$GITHUB_WORKFLOW  event=$GITHUB_EVENT_NAME" >> "$LOG"
+          echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$LOG"
+          echo "" >> "$LOG"
+
+          if [ -n "$LOG_KEY" ]; then
+            openssl enc -aes-256-cbc -base64 -salt -pbkdf2 -pass pass:"$LOG_KEY" -in "$LOG" -out "$ENC"
+            echo "encrypted $LOG -> $ENC (key present)"
+          else
+            echo "WARNING: AEVION_LOG_KEY not set in the repo secrets — skipping encryption."
+            echo "TIP: store a random AES-256 key via Actions secrets as AEVION_LOG_KEY."
+            echo "The build still succeeds; the log artifact will not be uploaded."
+            exit 0
+          fi
+
+      # 10. Ship the encrypted log artifact alongside the APK so it is trivial to
+      #     download — the encryption is the gate, not who can see the workflow run.
+      - name: Upload encrypted build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aevion-build-log.enc
+          path: Aevion-build-log.enc
+          retention-days: 90
+          if-no-files-found: ignore
+          overwrite: true
