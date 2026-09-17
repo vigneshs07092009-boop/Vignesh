@@ -56,6 +56,28 @@ Speech recognition on Android is usually **online** (Google's service) unless th
 
 ## 5. Rebuilding
 
+### In the cloud (every push)
+
+A **GitHub Actions workflow** builds the APK automatically on every push to `main` (and on PRs touching `main`, plus manual), so the latest APK is always downloadable without your PC's toolchain.
+
+👉 **`.github/workflows/build-apk.yml`** — the workflow.
+
+What it does on each run:
+1. Checks out the repo.
+2. Installs the Capacitor toolchain into `android-wrapper/.
+3. Copies the `aevion/` web app into `www/`.
+4. Syncs the Capacitor native project.
+5. Builds the APK using the repo's Gradle wrapper (never the runner's global Gradle).
+6. Uploads **Aevion-debug.apk** as a downloadable artifact (kept 90 days).
+7. Runs a verification step that scans `classes.dex` for `SpeechPlugin` and checks the manifest for `RECORD_AUDIO` and the speech `<queries>` entry — if the plugin silently dropped, the run fails before you spend time downloading.
+
+To get the APK:
+- Go to the repo's **Actions** tab, click the latest **Build APK** run.
+- Under **Artifacts**, click **Aevion-debug** to download the `.zip`.
+- Unzip it — `app-debug.apk` inside is the APK to install on your phone.
+
+The workflow runs on the GitHub-hosted `ubuntu-latest` runner, which already ships **Node 20, JDK 17 and the Android SDK** — nothing extra to install. Nothing lives in your cloud except the build result.
+
 ### On this PC
 
 The toolchain lives outside your system `PATH`, so use the wrapper rather than calling `npx` yourself. Both copies work — the repo copy and the build folder `C:\Users\vigne\aevion-android`:
