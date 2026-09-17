@@ -1,0 +1,11 @@
+{
+  "appId": "com.aevion.app",
+  "appName": "Aevion",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

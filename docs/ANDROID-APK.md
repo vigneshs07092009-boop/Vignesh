@@ -1,92 +1,101 @@
 # Building the Aevion Android APK
 
-Aevion ships as a PWA (installable from Chrome — that's the fastest path). When you want a **real APK** with a native shell, wrap the exact same code with Capacitor. One-time setup on a PC:
+Aevion ships as a PWA first (installable from Chrome — the fastest path, no toolchain at all). This guide is for the **real APK**, which wraps the exact same code in a native Android shell.
 
-## 1. Install the toolchain (one time)
+The wrapper is committed in this repo at **[`android-wrapper/`](../android-wrapper/README.md)**. That folder is the source of truth for everything a browser cannot provide: the Android project, the build scripts, and `SpeechPlugin.java`.
+
+## 1. Install the toolchain (once per machine)
 
 1. **Node.js LTS** — https://nodejs.org
-2. **Android Studio** — https://developer.android.com/studio (installs the SDK)
-3. JDK 17 comes bundled with recent Android Studio.
+2. **JDK 17+** — bundled with recent Android Studio, or [Eclipse Temurin](https://adoptium.net)
+3. **Android SDK** — Android Studio, or just the command-line tools
 
-## 2. Create the wrapper project
+Nothing needs to be on your `PATH` — the build script points at the toolchain explicitly.
 
-```bash
-mkdir aevion-android && cd aevion-android
-npm init -y
-npm i @capacitor/core @capacitor/cli @capacitor/android
-npx cap init Aevion com.aevion.app --web-dir=www
-```
-
-## 3. Copy the app in
+## 2. Get the project
 
 ```bash
-mkdir www
-# copy EVERYTHING from the repo's aevion/ folder into www/
-xcopy /E /I path\to\Vignesh\aevion www
+git clone <your repo> && cd Vignesh/android-wrapper
+npm install
 ```
 
-Edit `capacitor.config.json`:
+The committed `android/` folder already contains the plugin, the manifest customisations and the icons. **Do not run `npx cap add android`** — it regenerates a default project and silently drops all of that.
 
-```json
-{
-  "appId": "com.aevion.app",
-  "appName": "Aevion",
-  "webDir": "www",
-  "server": { "androidScheme": "https" }
-}
-```
-
-## 4. Build
+## 3. Copy the web app in and build
 
 ```bash
-npx cap add android
-npx cap sync
-npx cap open android   # opens Android Studio → Build > Build APK(s)
+mkdir -p www && cp -r ../aevion/. www/     # PowerShell: robocopy ..\aevion www /E /XF serve.ps1 serve.bat
+cd android && ./gradlew assembleDebug      # Windows: .\gradlew.bat assembleDebug
 ```
 
 The APK lands in `android/app/build/outputs/apk/debug/app-debug.apk`.
-Sideloading: enable "Install unknown apps" for your file manager, open the APK, done.
 
-## 5. Permissions in the APK
+Sideloading: copy it to the phone, tap it, and allow **"Install unknown apps"** for that file manager. That prompt is normal for anything outside the Play Store.
 
-Add only what you use to `android/app/src/main/AndroidManifest.xml` — e.g. `RECORD_AUDIO` (voice), `INTERNET` (only if you enable online features). Aevion's permission manager surfaces the Android runtime dialogs at first use, per Google Play policy. Nothing is bypassed.
+`www/` is a build input, not source — it is a copy of `aevion/`, gitignored, and refreshed by the rebuild script.
 
-## Play Store later?
+## 4. Native voice (why the mic needs Java)
 
-Same project: generate an upload key (`keytool`), build an AAB (`bundleRelease`), enroll in Play Console. Note Google may require a privacy policy — docs/PRIVACY.md is your template.
-
-## Notes
-
-- Update the app = copy new `aevion/` files into `www/`, run `npx cap sync`, rebuild.
-- The service worker keeps working inside the WebView for instant loads.
-
-## Native voice (why the mic needs Java)
-
-The Web Speech API that Aevion uses in a browser **does not exist in Android WebView**, so voice input inside the APK cannot come from JavaScript. `SpeechPlugin.java` is a small local Capacitor plugin that calls Android's own `SpeechRecognizer` and `TextToSpeech` instead.
+The Web Speech API that Aevion uses in a browser **is not implemented in Android WebView**, so voice input inside the APK cannot come from JavaScript. `SpeechPlugin.java` is a local Capacitor plugin that drives Android's own `SpeechRecognizer` and `TextToSpeech` instead; `js/voice.js` detects `window.Capacitor.Plugins.Speech` at load and uses it, falling back to the Web Speech API everywhere else.
 
 ```
 android/app/src/main/java/com/aevion/app/SpeechPlugin.java   <- the plugin
 android/app/src/main/java/com/aevion/app/MainActivity.java   <- registers it
-android/app/src/main/AndroidManifest.xml                    <- RECORD_AUDIO + <queries>
+android/app/src/main/AndroidManifest.xml                     <- RECORD_AUDIO + <queries>
 ```
 
 Things that bite when editing it:
 
-- `registerPlugin(SpeechPlugin.class)` must run **before** `super.onCreate()` — that is where the bridge is built from the plugin list.
-- `SpeechRecognizer` must be created and driven from the **main thread** (`getActivity().runOnUiThread`).
-- Android 11+ hides other packages by default: the `<queries><intent><action android:name="android.speech.RecognitionService"/></intent></queries>` entry is what keeps `isRecognitionAvailable()` honest.
+- `registerPlugin(SpeechPlugin.class)` must run **before** `super.onCreate()` — that is where the Capacitor bridge is built from the plugin list. Register it after, and the plugin silently does not exist.
+- `SpeechRecognizer` must be created and driven from the **main thread** (`getActivity().runOnUiThread`); Capacitor runs plugin methods on a background thread.
+- Android 11+ hides other packages by default: the `<queries><intent><action android:name="android.speech.RecognitionService"/></intent></queries>` entry is what keeps `isRecognitionAvailable()` honest. Without it the app claims there is no speech service.
 - A `@PermissionCallback` method is looked up **by name** and must match the third argument of `requestPermissionForAlias(...)`.
-- Late callbacks from a cancelled session are dropped by checking a `listening` flag first, otherwise aborting a session fires a bogus "error" at the UI.
+- Guard late callbacks: aborting a session fires `onError(ERROR_CLIENT)`, so set the `listening` flag false *before* `cancel()` or the UI sees a phantom error.
 
 Speech recognition on Android is usually **online** (Google's service) unless the device has an offline language pack installed — device-dependent, not something Aevion can force.
 
-## Rebuilding on this PC
+## 5. Rebuilding
 
-The toolchain is installed **outside** your system PATH, so use the wrapper rather than calling `npx` yourself:
+### On this PC
+
+The toolchain lives outside your system `PATH`, so use the wrapper rather than calling `npx` yourself. Both copies work — the repo copy and the build folder `C:\Users\vigne\aevion-android`:
 
 ```
-C:\Users\vigne\aevion-android\update-and-rebuild.bat    # copy web app -> cap sync -> build -> Aevion.apk
-C:\Users\vigne\aevion-android\verify-apk.ps1            # proves the APK contains the plugin + current assets
+android-wrapper\update-and-rebuild.bat   # copy web app -> cap sync -> build -> Aevion.apk
+android-wrapper\verify-apk.ps1           # proves the APK contains the plugin + current assets
+android-wrapper\sync-wrapper.bat         # keep the two copies identical (newer file wins)
 ```
 
-`update-and-rebuild.bat` expects the portable Node/JDK/SDK at `C:\Users\vigne\aevion-tools` (edit the `NODE=`/`JDK=`/`SDK=` lines if you move them) and deliberately runs a non-interactive PowerShell detach for Gradle (see `build-apk.ps1`) because a long Gradle run outlives a normal terminal window. `verify-apk.ps1` fails loudly if a build silently drops the plugin classes, the manifest queries, or the versioned web assets.
+All three derive their own location (`%~dp0` / `$PSScriptRoot`), and `update-and-rebuild.bat` finds the web app as its sibling `..\aevion`, so the same files work from either folder. The scripts read Node/JDK/SDK from a config block at the top; edit those lines if you move the toolchain. `build-apk.ps1` falls back to `JAVA_HOME`/`ANDROID_HOME` if the portable copies are missing.
+
+`verify-apk.ps1` runs 12 static checks on the built APK — plugin classes present in `classes.dex`, `RECORD_AUDIO` and the `<queries>` entry, current web assets. A build that silently drops the plugin is otherwise invisible until you try to talk to your phone.
+
+### Two copies, one source of truth
+
+Your build folder and the repo copy are the same project. Edit whichever you're working in, then run `sync-wrapper.bat`: it copies the hand-written files (`java/**`, `AndroidManifest.xml`, `capacitor.config.json`, the scripts) in **both** directions, keeps the newer file in each pair, and prints what `git status` wants to commit. Generated folders are never touched.
+
+## 6. Permissions in the APK
+
+Add only what you use to `android/app/src/main/AndroidManifest.xml`:
+
+- `RECORD_AUDIO` + `MODIFY_AUDIO_SETTINGS` — voice input (Android's recognizer also needs its own service visible via `<queries>`)
+- `INTERNET` — only needed if you enable online features
+
+Aevion's permission manager surfaces the Android runtime dialogs at first use, and Capacitor's `BridgeWebChromeClient` routes WebView mic requests through the same OS dialog. Nothing is bypassed, and nothing listens until you tap the mic.
+
+## 7. Play Store later?
+
+Generate an upload key, build an AAB, enroll in Play Console:
+
+```bash
+keytool -genkey -v -keystore aevion-release.jks -alias aevion -keyalg RSA -keysize 2048 -validity 10000
+cd android && ./gradlew bundleRelease     # needs signingConfig in app/build.gradle
+```
+
+Keep the keystore **out** of git and back it up — losing it means you can never update that Play listing. Google will also require a privacy policy; `docs/PRIVACY.md` is the template.
+
+## Notes
+
+- Update the app = copy new `aevion/` files into `www/`, run `cap sync`, rebuild (that is exactly what `update-and-rebuild.bat` does).
+- The service worker keeps working inside the WebView for instant loads.
+- Model weights are **not** in the APK. The in-browser AI downloads its ~1 GB once, per device, into the WebView's cache — Android Chrome/WebView 121+ has the WebGPU it needs.

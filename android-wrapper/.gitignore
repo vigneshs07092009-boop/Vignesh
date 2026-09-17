@@ -1,0 +1,22 @@
+# ============================================================
+# Generated — never commit these
+# ============================================================
+
+# Capacitor CLI + Capacitor Android, installed with `npm install`
+node_modules/
+
+# The web app inlined for the APK — produced by update-and-rebuild.bat
+# (a copy of ../aevion, which IS versioned) and by `npx cap sync`
+www/
+
+# Build logs from build-apk.ps1 / update-and-rebuild.bat
+build.log
+build.log.err
+
+# android/ carries Capacitor's own .gitignore, which already excludes:
+#   android/build/ , android/app/build/ , android/.gradle/
+#   local.properties                  (machine-specific SDK path)
+#   app/src/main/assets/public/       (the copied web app)
+#   app/src/main/assets/capacitor.config.json , capacitor.plugins.json
+#   android/capacitor-cordova-android-plugins/
+# So the Android sources below are the only thing that gets committed.

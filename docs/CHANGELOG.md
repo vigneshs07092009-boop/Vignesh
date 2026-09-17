@@ -1,5 +1,13 @@
 # Aevion — Technical Changelog
 
+## Tooling — the native wrapper is versioned (app version unchanged: 0.5.0)
+- **`android-wrapper/` is now in git**: the Capacitor Android project (`android/`), `capacitor.config.json`, the npm manifests, `SpeechPlugin.java`, `MainActivity.java`, the manifest, icons, and all four helper scripts. Until now the voice code existed in exactly one place on one disk, outside any repo and outside OneDrive — one bad folder deletion from being gone.
+- **Generated things stay out**: `node_modules/`, `www/`, `android/build/`, `android/app/build/`, `android/.gradle/` and `local.properties` are gitignored (Capacitor's own `android/.gitignore` handles the Android side). ~480 KB of actual source, 63 files.
+- **Scripts are now location-independent**: `update-and-rebuild.bat` resolves the web app as its sibling `../aevion` (with an absolute fallback), `build-apk.ps1` derives `android/` from `$PSScriptRoot` and falls back to `JAVA_HOME`/`ANDROID_HOME`, and `verify-apk.ps1` locates both the APK and `aapt2` itself. The same files now work from the repo copy *or* the build folder — copy them into either and they behave.
+- **`sync-wrapper.bat`**: two-way sync of the hand-written files between the repo copy and the build folder (robocopy `/XO`, newer file wins), so an edit made in either place can't drift or get lost. Never touches generated folders.
+- **`verify-apk.ps1` grew up**: 12 checks now, including that the packaged `core.js` actually contains the event-payload fix — the kind of regression a passing build would happily hide.
+- A fresh clone can rebuild the APK without `npx cap add android`, which would otherwise regenerate a default project and drop the plugin, manifest customisations and icons.
+
 ## 0.5.0 — voice that works in the Android app
 - **Native speech plugin** (`android/app/src/main/java/com/aevion/app/SpeechPlugin.java`): a local Capacitor plugin exposing Android's own `SpeechRecognizer` + `TextToSpeech`. It exists because the Web Speech API is **not implemented in Android WebView**, so the mic button could never work inside the APK. Reachable from the web app as `window.Capacitor.Plugins.Speech`; registered in `MainActivity.onCreate` before the bridge is built.
 - **`voice.js` picks its engine automatically**: native plugin when present, Web Speech API otherwise. Same public API either way (`start`, `stop`, `speak`, `voices`), so nothing above it changed.

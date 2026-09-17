@@ -22,6 +22,8 @@ Aevion is a personal AI assistant that runs **entirely on your device** — in a
 ### 📦 Building a real APK (optional)
 See **[docs/ANDROID-APK.md](docs/ANDROID-APK.md)** — wrap this exact same code with Capacitor when you're ready.
 
+The native shell is versioned in this repo at **[`android-wrapper/`](android-wrapper/)**: the Capacitor Android project, the build scripts, and `SpeechPlugin.java` (Android's speech recognition + TTS, which WebView does not provide). `android-wrapper/README.md` covers rebuilding it.
+
 ## ✨ What's inside
 
 | Module | What it does |
@@ -59,6 +61,11 @@ js/online.js   opt-in OpenAI-compatible connector (Ollama etc.)
 js/app.js      all UI wiring, views, settings, boot sequence
 js/plugins/    drop-in skill files
 sw.js          offline caching · manifest.json · PWA install
+```
+
+```
+android-wrapper/   native APK shell (Capacitor + SpeechPlugin.java)
+docs/              architecture, privacy, plugins, roadmap, APK guide
 ```
 
 Deep dive: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
