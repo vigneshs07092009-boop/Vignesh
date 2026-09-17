@@ -1,0 +1,127 @@
+# ====================================================================
+# Aevion APK builder — runs in GitHub-hosted runners so you can
+# download a fresh Aevion.apk without your PC's toolchain.
+# Triggered on every push to main, and any PR touching it, plus manual.
+# ====================================================================
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Aevion.apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # 1. Repository code
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. ubuntu-latest already ships Node 20, JDK 17 + the Android SDK.
+      #    We make the env vars explicit to match your local script shape.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: android-wrapper/package-lock.json
+
+      - name: Configure env vars
+        run: |
+          echo "HOME=$HOME"
+          echo "ANDROID_HOME=${{ env.ANDROID_HOME }}"
+          echo "ANDROID_SDK_ROOT=${{ env.ANDROID_SDK_ROOT }}"
+          echo "JAVA_HOME=${{ env.JAVA_HOME }}"
+          echo "Node: $(command -v node) $(node --version)"
+          echo "Java: $(command -v java) $(java --version 2>&1 | head -1)"
+          echo "npm: $(npm --version || echo 'not present (will install via npm install)')"
+
+      # 3. Install the Capacitor toolchain into android-wrapper/
+      - name: Install Capacitor dependencies
+        working-directory: ./android-wrapper
+        run: npm install --prefer-offline
+
+      # 4. Copy the Aevion web app into www/ (exactly what a fresh clone needs)
+      - name: Copy web assets into www
+        run: |
+          rm -rf android-wrapper/www
+          mkdir -p android-wrapper/www
+          cp -r aevion/. android-wrapper/www/
+          rm -f android-wrapper/www/serve.ps1 android-wrapper/www/serve.bat
+
+      # 5. Sync the Capacitor native project with the web app
+      - name: Sync Capacitor native project
+        working-directory: ./android-wrapper
+        run: npx cap sync android
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+
+      # 6. Build the APK using the repo's Gradle wrapper — never the runner's global Gradle
+      - name: Build Aevion debug APK
+        working-directory: ./android-wrapper
+        run: |
+          cd android
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --console=plain \
+            --quiet \
+            -Dorg.gradle.jvmargs="-Xmx2g"
+
+      # 7. Upload the APK as a downloadable artifact (Gatehouse keeps it to you)
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aevion-debug
+          path: android-wrapper/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 90
+          if-no-files-found: error
+          overwrite: true
+
+      # 8. Sanity-check that the native plugin actually shipped — catches
+      #    any silent drop before you spend time downloading.
+      - name: Verify the build APK contains the native plugin
+        if: success()
+        working-directory: ./android-wrapper
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          echo "=== verifying the freshly built APK ==="
+          test -f "$APK" || { echo "APK not found at $APK"; exit 1; }
+          echo "APK size: $(du -h "$APK" | cut -f1)"
+
+          # native plugin classes live in classes.dex — scan them
+          unzip -p "$APK" classes.dex > /tmp/classes_dex.bin
+          grep -q "SpeechPlugin" /tmp/classes_dex.bin   || { echo "SpeechPlugin not found in classes.dex"; exit 1; }
+          grep -q "micPermission"     /tmp/classes_dex.bin   || { echo "micPermission callback not found in classes.dex"; exit 1; }
+          echo "PASS: native plugin is inside the APK"
+
+          # manifest carries the permissions + the speech <queries> entry
+          unzip -p "$APK" AndroidManifest.xml | grep -q "RECORD_AUDIO" || { echo "RECORD_AUDIO missing from manifest"; exit 1; }
+          unzip -p "$APK" AndroidManifest.xml | grep -q "android.speech.RecognitionService" || { echo "speech <queries> entry missing from manifest"; exit 1; }
+          echo "PASS: manifest carries RECORD_AUDIO + speech queries"
+
+          # web assets are the current version (ver bump in index.html = 050)
+          unzip -p "$APK" assets/public/index.html | grep -q '?v=050' || { echo "index.html not at v=050 — likely stale"; exit 1; }
+          echo "PASS: web assets are the current version"
+
+          # the event-payload fix is really in packaged core.js
+          unzip -p "$APK" assets/public/js/core.js | grep -q 'e && e.detail' || { echo "event-payload fix missing from core.js"; exit 1; }
+          echo "PASS: event-payload fix is in core.js"
+
+          echo "=== verification complete — APK is safe to download ==="
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          JAVA_HOME: ${{ env.JAVA_HOME }}
