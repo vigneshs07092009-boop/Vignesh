@@ -59,3 +59,34 @@ Same project: generate an upload key (`keytool`), build an AAB (`bundleRelease`)
 
 - Update the app = copy new `aevion/` files into `www/`, run `npx cap sync`, rebuild.
 - The service worker keeps working inside the WebView for instant loads.
+
+## Native voice (why the mic needs Java)
+
+The Web Speech API that Aevion uses in a browser **does not exist in Android WebView**, so voice input inside the APK cannot come from JavaScript. `SpeechPlugin.java` is a small local Capacitor plugin that calls Android's own `SpeechRecognizer` and `TextToSpeech` instead.
+
+```
+android/app/src/main/java/com/aevion/app/SpeechPlugin.java   <- the plugin
+android/app/src/main/java/com/aevion/app/MainActivity.java   <- registers it
+android/app/src/main/AndroidManifest.xml                    <- RECORD_AUDIO + <queries>
+```
+
+Things that bite when editing it:
+
+- `registerPlugin(SpeechPlugin.class)` must run **before** `super.onCreate()` — that is where the bridge is built from the plugin list.
+- `SpeechRecognizer` must be created and driven from the **main thread** (`getActivity().runOnUiThread`).
+- Android 11+ hides other packages by default: the `<queries><intent><action android:name="android.speech.RecognitionService"/></intent></queries>` entry is what keeps `isRecognitionAvailable()` honest.
+- A `@PermissionCallback` method is looked up **by name** and must match the third argument of `requestPermissionForAlias(...)`.
+- Late callbacks from a cancelled session are dropped by checking a `listening` flag first, otherwise aborting a session fires a bogus "error" at the UI.
+
+Speech recognition on Android is usually **online** (Google's service) unless the device has an offline language pack installed — device-dependent, not something Aevion can force.
+
+## Rebuilding on this PC
+
+The toolchain is installed **outside** your system PATH, so use the wrapper rather than calling `npx` yourself:
+
+```
+C:\Users\vigne\aevion-android\update-and-rebuild.bat    # copy web app -> cap sync -> build -> Aevion.apk
+C:\Users\vigne\aevion-android\verify-apk.ps1            # proves the APK contains the plugin + current assets
+```
+
+`update-and-rebuild.bat` expects the portable Node/JDK/SDK at `C:\Users\vigne\aevion-tools` (edit the `NODE=`/`JDK=`/`SDK=` lines if you move them) and deliberately runs a non-interactive PowerShell detach for Gradle (see `build-apk.ps1`) because a long Gradle run outlives a normal terminal window. `verify-apk.ps1` fails loudly if a build silently drops the plugin classes, the manifest queries, or the versioned web assets.

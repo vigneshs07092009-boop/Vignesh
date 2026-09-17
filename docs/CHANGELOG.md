@@ -1,5 +1,15 @@
 # Aevion — Technical Changelog
 
+## 0.5.0 — voice that works in the Android app
+- **Native speech plugin** (`android/app/src/main/java/com/aevion/app/SpeechPlugin.java`): a local Capacitor plugin exposing Android's own `SpeechRecognizer` + `TextToSpeech`. It exists because the Web Speech API is **not implemented in Android WebView**, so the mic button could never work inside the APK. Reachable from the web app as `window.Capacitor.Plugins.Speech`; registered in `MainActivity.onCreate` before the bridge is built.
+- **`voice.js` picks its engine automatically**: native plugin when present, Web Speech API otherwise. Same public API either way (`start`, `stop`, `speak`, `voices`), so nothing above it changed.
+- **Android 11+ package visibility**: added the `<queries>` entry for `android.speech.RecognitionService` — without it `SpeechRecognizer.isRecognitionAvailable()` reports *false* and voice silently looks "unsupported".
+- **Permission flow reuses the Aevion permission manager**; the plugin falls back to Android's runtime dialog via `@PermissionCallback`, and Capacitor's `BridgeWebChromeClient` already routes WebView mic requests to the same OS dialog.
+- **Live transcript + real error messages**: partial results now stream into the composer while you speak, and failure codes are translated to human text (`no-match` → "I didn't catch that — try again") instead of failing silently.
+- **Fixed a latent event-bus bug**: `Aevion.on()` handed handlers the raw `CustomEvent`, but every payload handler treated the argument as the value — so voice input (in the browser too, not just the APK) sent the literal string `"[object CustomEvent]"`. Payloads are now unwrapped in `core.js`.
+- **Crash guard**: `voices()` no longer assumes `speechSynthesis` exists — it is absent in Android WebView and threw when Settings rendered.
+- Dev tooling: `verify-apk.ps1` (static APK checks: plugin classes in the dex, manifest queries, asset versions) and a fixed `update-and-rebuild.bat` that uses the portable Node/JDK/SDK paths instead of `PATH`.
+
 ## 0.4.1 — rich chat rendering
 - **New module `js/markdown.js`** (zero dependencies, ~350 lines): headings, paragraphs, **bold**/*italic*/~~strike~~, inline code, links + autolinks, bullet/numbered lists with nesting, blockquotes, tables (with `:---:` alignment), horizontal rules and fenced code blocks.
 - **Syntax highlighting** for 20+ languages — JavaScript/TypeScript, Python, Java, C/C++/C#, Go, Rust, PHP, Ruby, Kotlin, Swift, HTML/XML, CSS, JSON, YAML, Bash, SQL, Markdown — via one combined regex per language (ordered comment → string → number → keyword → function → type → operator rules).

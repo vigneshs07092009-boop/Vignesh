@@ -2,10 +2,11 @@
  * Aevion Core — storage, events, permissions, memory, crypto
  * ============================================================ */
 window.Aevion = {
-  version: '0.4.1',
+  version: '0.5.0',
   bus: new EventTarget(),
   emit(ev, data) { this.bus.dispatchEvent(new CustomEvent(ev, { detail: data })); },
-  on(ev, fn) { this.bus.addEventListener(ev, fn); },
+  // handlers receive the payload itself, not the CustomEvent wrapper
+  on(ev, fn) { this.bus.addEventListener(ev, e => fn(e && e.detail)); },
 
   /* ---------- storage (namespaced, JSON-safe) ---------- */
   store: {

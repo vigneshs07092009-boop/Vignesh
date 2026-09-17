@@ -217,6 +217,8 @@
     }
   };
   Aevion.on('voice:end', () => $('#micBtn').classList.remove('listening'));
+  Aevion.on('voice:partial', text => { if (text) $('#chatInput').value = text; });
+  Aevion.on('voice:error', code => toast('🎤 ' + Aevion.voice.errorText(code)));
   Aevion.on('voice:final', text => {
     if (!text) return;
     $('#chatInput').value = text;

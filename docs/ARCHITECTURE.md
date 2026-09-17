@@ -59,8 +59,16 @@ Pure rendering module, no dependencies and no DOM required (`render(src) -> html
 ### online.js — the only door out
 A single `fetch` wrapper for OpenAI-compatible endpoints (`/v1/chat/completions`), which Ollama, LM Studio, llama.cpp server, vLLM and most providers speak. Throws unless `settings.onlineAI` is true. 60 s timeout via AbortController.
 
-### voice.js — on-device speech
-Web `SpeechRecognition` (Chrome/Edge/Android WebView engine) for input, `speechSynthesis` for output. Mic permission is requested through the permission manager before first use. No audio ever leaves the engine the OS provides.
+### voice.js — on-device speech, two engines
+One public API (`start`, `stop`, `speak`, `voices`, `shutup`, `errorText`), two backends chosen at load time:
+
+1. **Native (Android APK)** — if `window.Capacitor.Plugins.Speech` exists, input goes through Android's `SpeechRecognizer` and output through `TextToSpeech`. This is required because the Web Speech API is absent in Android WebView (which is why the mic button never worked in the APK). Partial results stream into the composer live; error codes are mapped to readable text. The Java side lives at `android/app/src/main/java/com/aevion/app/SpeechPlugin.java` — edit and rebuild with `update-and-rebuild.bat`.
+2. **Web (Chrome/Edge/Safari)** — `SpeechRecognition` for input, `speechSynthesis` for output.
+
+Both paths request the microphone through Aevion's permission manager first, so the OS dialog appears only after you allow it in Settings, and nothing listens until the mic is tapped — there is no always-on wake word (privacy + battery). `speechSynthesis` is feature-detected everywhere, since referencing it unguarded throws in a WebView.
+
+### Event bus payloads
+`Aevion.emit(name, payload)` wraps the payload in a `CustomEvent`; `Aevion.on(name, fn)` unwraps it so `fn` receives the payload directly. Handlers that ignore arguments (like `chat:clear`) are unaffected.
 
 ### Plugins
 `Aevion.plugins.register({ name, desc, commands })`. Command keys are matched as message prefixes before the brain runs. Files are plain `<script>` tags — no loader magic.
