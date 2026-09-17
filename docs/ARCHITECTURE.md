@@ -47,6 +47,15 @@ Every message is matched against an ordered rule list → `kind`. Kinds map to h
 ### webllm.js — the in-browser brain
 Runs a small instruct model (Llama 3.2 / Qwen 2.5 / Gemma / Phi, 1–3B, q4f16) on your GPU through WebGPU. The engine (`vendor/webllm.esm.js`, Apache-2.0) is vendored locally — no CDN. Model weights download once from the public mlc-ai Hugging Face mirrors, get cached in browser Cache storage, and from then on chat runs 100% offline on-device. `chatStream(messages, onToken)` streams tokens for live typing. Chat priority: WebLLM → online AI → local brain. If WebGPU is missing, the Settings card says so and everything else still works.
 
+### markdown.js — how replies look
+Pure rendering module, no dependencies and no DOM required (`render(src) -> html`, `renderInto(el, src)`, `canStream(src)`, `toPlain(src)` for TTS).
+
+- **Safety**: the source is HTML-escaped *before* any markup exists, so model output can never inject tags; links pass a scheme whitelist (`http(s)://`, `mailto:`, `#`) and are emitted with `rel="noopener noreferrer"`.
+- **Blocks**: fences (``` and ~~~, language label preserved), headings, `<hr>`, blockquotes (recursive), ordered/unordered lists with one nesting level, pipe tables with `:---:` alignment, paragraphs whose line breaks are preserved (`<br>`).
+- **Highlighting**: each language is an ordered list of `[tokenClass, regex]`; they are merged into one master regex and each alternative gets a marker capture group, so a single pass classifies tokens and every slice of untouched text stays escaped. Adding a language = one entry in `LANGS` + `ALIAS`.
+- **Copy buttons**: emitted with the code block; `app.js` handles them with one delegated listener on `#chatLog`, so history-restored blocks work without re-binding.
+- **Streaming**: `canStream()` returns false while a fence is open, which stops the chat repaint thrash during in-browser model output.
+
 ### online.js — the only door out
 A single `fetch` wrapper for OpenAI-compatible endpoints (`/v1/chat/completions`), which Ollama, LM Studio, llama.cpp server, vLLM and most providers speak. Throws unless `settings.onlineAI` is true. 60 s timeout via AbortController.
 

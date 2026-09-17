@@ -119,6 +119,71 @@ body.collapsed #views { left: 0; }
 #chatInput { flex: 1; max-height: 120px; }
 .composer .send { color: var(--accent); border-color: var(--accent); }
 
+/* ---------- Markdown in chat ---------- */
+.msg .md { white-space: normal; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 0 0 8px; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 12px 0 6px; line-height: 1.3; }
+.md h1 { font-size: 19px; } .md h2 { font-size: 17px; } .md h3 { font-size: 15.5px; }
+.md h4, .md h5, .md h6 { font-size: 14px; }
+.md ul, .md ol { margin: 0 0 8px; padding-left: 22px; }
+.md li { margin: 2px 0; }
+.md blockquote {
+  margin: 8px 0; padding: 4px 0 4px 10px;
+  border-left: 3px solid var(--accent2, var(--accent)); color: var(--muted);
+}
+.md hr { border: none; border-top: 1px solid var(--line); margin: 12px 0; }
+.md a { color: var(--accent2, var(--accent)); text-decoration: underline; word-break: break-word; }
+.md strong { color: var(--text); font-weight: 700; }
+.md del { opacity: .65; }
+.md table {
+  border-collapse: collapse; margin: 8px 0; font-size: 13px;
+  display: block; overflow-x: auto; max-width: 100%;
+}
+.md th, .md td { border: 1px solid var(--line); padding: 5px 9px; }
+.md th { background: var(--code-head); font-weight: 600; }
+.md code {
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, ui-monospace, monospace;
+  font-size: 12.5px;
+}
+.md code.md-code-inline {
+  background: var(--code-head); color: var(--accent);
+  padding: 1px 5px; border-radius: 5px; word-break: break-word;
+}
+.md .md-code {
+  margin: 8px 0; border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden; background: var(--code-bg);
+}
+.md-code-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 4px 8px; background: var(--code-head); border-bottom: 1px solid var(--line);
+}
+.md-code-lang {
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted);
+}
+.md-code-copy {
+  font-size: 11px; padding: 3px 9px; border-radius: 6px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted);
+}
+.md-code-copy:hover { color: var(--accent); border-color: var(--accent); }
+.md-code-copy.copied { color: var(--ok); border-color: var(--ok); }
+.md .md-code pre { margin: 0; padding: 10px 12px; overflow-x: auto; }
+.md .md-code pre code { background: none; padding: 0; line-height: 1.55; white-space: pre; }
+
+/* syntax tokens */
+.tok-cmt { color: var(--tok-cmt); font-style: italic; }
+.tok-str { color: var(--tok-str); }
+.tok-num { color: var(--tok-num); }
+.tok-kw  { color: var(--tok-kw); font-weight: 600; }
+.tok-fn  { color: var(--tok-fn); }
+.tok-typ { color: var(--tok-typ); }
+.tok-op  { color: var(--tok-op); }
+.tok-var { color: var(--tok-var); }
+.tok-tag { color: var(--tok-tag); }
+.tok-attr { color: var(--tok-attr); }
+.tok-key { color: var(--tok-key); }
+
 /* ---------- Cards / forms ---------- */
 .card {
   background: var(--panel); border: 1px solid var(--line);

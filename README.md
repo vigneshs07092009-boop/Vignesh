@@ -26,7 +26,7 @@ See **[docs/ANDROID-APK.md](docs/ANDROID-APK.md)** — wrap this exact same code
 
 | Module | What it does |
 |---|---|
-| 💬 Assistant | Local intent brain (math, time, memory, jokes…), **in-browser AI model** (WebLLM on your GPU — fully offline, no API keys), optional online AI (Ollama or any OpenAI-compatible endpoint) |
+| 💬 Assistant | Local intent brain (math, time, memory, jokes…), **in-browser AI model** (WebLLM on your GPU — fully offline, no API keys), optional online AI (Ollama or any OpenAI-compatible endpoint), **markdown replies with syntax-highlighted code + Copy buttons** |
 | 🎤 Voice | Speech-to-text + text-to-speech using your device's built-in engines. No cloud wake-word. Tap-to-talk (privacy-first). |
 | 🌐 Translation | Multilingual chat + "translate X to Tamil/Hindi/…" via browser service (opt-in) |
 | 🎓 Studio | Quiz generator, offline summarizer, flashcard decks, pomodoro focus timer, code language notes, code profiler |
@@ -54,6 +54,7 @@ js/core.js     storage • event bus • permissions • memory • crypto
 js/brain.js    intent routing → local handlers / skills / online AI
 js/skills.js   math • translation • summarize • quiz • code knowledge
 js/voice.js    speech recognition • TTS (on-device engines)
+js/markdown.js markdown renderer • syntax highlighting (no deps)
 js/online.js   opt-in OpenAI-compatible connector (Ollama etc.)
 js/app.js      all UI wiring, views, settings, boot sequence
 js/plugins/    drop-in skill files

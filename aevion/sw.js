@@ -1,9 +1,9 @@
 /* ============================================================
  * Aevion Service Worker — offline-first cache
- * Strategy: cache-first for app shell, network fallback.
- * Bump CACHE_VERSION when you change files to refresh clients.
+ * Strategy: network-first (updates land immediately), cache fallback
+ * when offline, plus a pre-warmed cache per CACHE_VERSION.
  * ============================================================ */
-const CACHE_VERSION = 'aevion-v0.4.0';
+const CACHE_VERSION = 'aevion-v0.4.1';
 const ASSETS = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const ASSETS = [
   './js/voice.js',
   './js/online.js',
   './js/webllm.js',
+  './js/markdown.js',
   './vendor/webllm.esm.js',
   './js/app.js',
   './js/plugins/hello-world.js'

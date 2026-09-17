@@ -48,11 +48,61 @@
       m.textContent = meta;
       d.appendChild(m);
     }
-    d.appendChild(document.createTextNode(text));
+    // AI replies get rendered as markdown; user text stays literal so what
+    // you typed is exactly what you see.
+    const body = document.createElement('div');
+    if (role === 'ai' && Aevion.md) Aevion.md.renderInto(body, text);
+    else body.textContent = text;
+    d.appendChild(body);
+    d._body = body;
     log.appendChild(d);
     log.scrollTop = log.scrollHeight;
     return d;
   }
+
+  /* live repaint while a model streams tokens: markdown is only re-parsed when
+     it is cheap (no open code fence) — the final pass below always renders */
+  function paint(el, text) {
+    const b = el._body || el;
+    if (Aevion.md && Aevion.md.canStream(text)) Aevion.md.renderInto(b, text);
+    else b.textContent = text;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function paintFinal(el, text) {
+    const b = el._body || el;
+    if (Aevion.md) Aevion.md.renderInto(b, text);
+    else b.textContent = text;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  /* copy buttons on markdown code blocks (delegated — works for restored history too) */
+  log.addEventListener('click', async e => {
+    const btn = e.target && e.target.closest ? e.target.closest('.md-code-copy') : null;
+    if (!btn) return;
+    const codeEl = btn.closest('.md-code')?.querySelector('code');
+    const text = (codeEl ? codeEl.textContent : '').replace(/\n$/, '');
+    let ok = true;
+    try {
+      if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+      else throw new Error('no clipboard api');
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        ta.remove();
+      } catch { ok = false; }
+    }
+    btn.textContent = ok ? 'Copied ✓' : 'Copy failed';
+    btn.classList.toggle('copied', ok);
+    clearTimeout(btn._h);
+    btn._h = setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+  });
 
   function history() { return Aevion.store.get('chatHistory', []); }
   function pushHistory(role, text) {
@@ -95,11 +145,11 @@
           let lastPaint = 0;
           const full = await Aevion.webllm.chatStream(msgs, (_d, fullText) => {
             const now = Date.now();
-            if (now - lastPaint > 60) { lastPaint = now; el.textContent = fullText; log.scrollTop = log.scrollHeight; }
+            if (now - lastPaint > 60) { lastPaint = now; paint(el, fullText); }
           });
-          el.textContent = full;
+          paintFinal(el, full);
           pushHistory('ai', full);
-          Aevion.voice.speak(full);
+          Aevion.voice.speak(Aevion.md ? Aevion.md.toPlain(full) : full);
           log.scrollTop = log.scrollHeight;
           return;
         } catch (e) {
@@ -134,7 +184,7 @@
   function reply(text, source) {
     addMsg('ai', text, (source || '').toUpperCase());
     pushHistory('ai', text);
-    Aevion.voice.speak(text);
+    Aevion.voice.speak(Aevion.md ? Aevion.md.toPlain(text) : text);
   }
 
   $('#sendBtn').onclick = send;
@@ -360,7 +410,7 @@
     const map = { greet: 'greet me', weather: 'weather', time: 'what time is it' };
     const out = await Aevion.brain.handle(map[a.what] || a.what);
     addMsg('ai', `⚡ Automation (${a.when}): ${out}`, 'AUTOMATION');
-    Aevion.voice.speak(out);
+    Aevion.voice.speak(Aevion.md ? Aevion.md.toPlain(out) : out);
   }
   function renderAutos() {
     const el = $('#autoList');

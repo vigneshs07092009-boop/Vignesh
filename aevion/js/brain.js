@@ -71,6 +71,7 @@
       "• \"weather\" (needs location + online permission)\n" +
       "• \"search <query>\" (needs online permission)\n" +
       "• \"open site <name>\"\n" +
+      "• Markdown renders — **bold**, *italic*, `code`, lists, tables and fenced code blocks (code gets syntax colors + a Copy button)\n" +
       "• /clear — reset the conversation\n" +
       "Studio: quizzes, flashcards, pomodoro, code tools.\n" +
       "Everything runs on-device unless you allow online features.",

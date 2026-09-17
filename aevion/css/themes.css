@@ -74,6 +74,39 @@
   --glow: 0 0 12px #0a84d81f;
 }
 
+/* ---------- Code / syntax palette (used by chat markdown) ---------- */
+:root {
+  --code-bg: #0b101d;
+  --code-head: #141c2e;
+  --tok-cmt: #6f83a3;
+  --tok-str: #9ee493;
+  --tok-num: #ffb86c;
+  --tok-kw: #7cc4ff;
+  --tok-fn: #ffd479;
+  --tok-typ: #6ee7d7;
+  --tok-op: #9fb3d1;
+  --tok-var: #ff9ecb;
+  --tok-tag: #ff8fa3;
+  --tok-attr: #ffd479;
+  --tok-key: #7cc4ff;
+}
+
+[data-theme="light"] {
+  --code-bg: #f5f7fc;
+  --code-head: #eaeff8;
+  --tok-cmt: #7a8699;
+  --tok-str: #1f7a3f;
+  --tok-num: #a35b00;
+  --tok-kw: #1b5fbf;
+  --tok-fn: #7a4fbf;
+  --tok-typ: #0a7b7b;
+  --tok-op: #5a6472;
+  --tok-var: #b3367f;
+  --tok-tag: #b3367f;
+  --tok-attr: #a35b00;
+  --tok-key: #1b5fbf;
+}
+
 [data-theme="mono"] {
   --bg: #101010;
   --bg2: #161616;
