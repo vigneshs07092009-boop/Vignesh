@@ -10,13 +10,24 @@ $port = 8787
 
 Write-Host ""
 Write-Host "  AEVION - local server" -ForegroundColor Cyan
-Write-Host "  http://localhost:$port   (Ctrl+C to stop)" -ForegroundColor Green
+Write-Host "  $canon   (Ctrl+C to stop)" -ForegroundColor Green
 Write-Host ""
 
 $listener = New-Object System.Net.HttpListener
+# The app has ONE canonical address: http://127.0.0.1:8787 - the address the
+# installed app and the desktop launcher open. Opening http://localhost:8787
+# instead would be a second origin to the browser (separate saved data,
+# separate service worker), so a brain configured through one door looks
+# missing when you come back through the other. Bind both names, open one.
 $listener.Prefixes.Add("http://localhost:$port/")
+try {
+  $listener.Prefixes.Add("http://127.0.0.1:$port/")
+  $canon = "http://127.0.0.1:$port/"
+} catch {
+  $canon = "http://localhost:$port/"   # no ACL for the raw IP: fall back
+}
 $listener.Start()
-Start-Process "http://localhost:$port/"
+Start-Process $canon
 
 $mime = @{
   '.html' = 'text/html; charset=utf-8'; '.js' = 'text/javascript; charset=utf-8'

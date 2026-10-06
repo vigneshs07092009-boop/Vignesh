@@ -22,6 +22,15 @@ const GOOD = {
 const manifestFetch = (manifest, status = 200) =>
   makeFetch([{ match: c => /update|manifest|\.json/.test(c.url), reply: { status, json: manifest } }]);
 
+/* "Same as the app" and "one newer than the app" are read from the app, not
+ * hardcoded. A pinned number silently becomes the OLD version the moment the
+ * app is bumped: these tests would keep passing while proving the opposite of
+ * what they claim, which is worse than failing. */
+const APP_CODE     = createApp().Aevion.update.currentVersionCode();
+const atAppVersion = { ...GOOD, versionCode: APP_CODE };
+const oneNewer     = { ...GOOD, versionCode: APP_CODE + 1, versionName: '99.1.7' };
+const oneOlder     = { ...GOOD, versionCode: APP_CODE - 1 };
+
 test('update: module is present with its whole API', () => {
   const { Aevion } = createApp();
   for (const fn of ['currentVersionName', 'currentVersionCode', 'isAndroid', 'readManifest',
@@ -33,7 +42,9 @@ test('update: module is present with its whole API', () => {
 
 test('update: versionCode falls back to the major*1e6+minor*1e3+patch scheme', () => {
   const { Aevion } = createApp();
-  assert.equal(Aevion.update.currentVersionCode(), 6 * 1000 + 6, '0.6.6 -> 6006');
+  const [maj, min, pat] = Aevion.version.split('.').map(Number);
+  assert.equal(Aevion.update.currentVersionCode(), maj * 1000000 + min * 1000 + pat,
+    `${Aevion.version} -> the same number the Gradle build derives`);
   assert.equal(Aevion.update.currentVersionName(), Aevion.version);
 });
 
@@ -84,7 +95,7 @@ for (const [label, bad] of [
 /* ---------- version comparison ---------- */
 
 test('update: same versionCode is not an update', async () => {
-  const { Aevion } = app({}, { fetch: manifestFetch({ ...GOOD, versionCode: 6006 }) });
+  const { Aevion } = app({}, { fetch: manifestFetch(atAppVersion) });
   const l = await Aevion.update.latest();
   assert.equal(l.isNewer, false);
   assert.equal(l.isSame, true);
@@ -92,7 +103,7 @@ test('update: same versionCode is not an update', async () => {
 });
 
 test('update: a higher versionCode is newer; install needs Android too', async () => {
-  const { Aevion } = app({}, { fetch: manifestFetch({ ...GOOD, versionCode: 6007 }) });
+  const { Aevion } = app({}, { fetch: manifestFetch(oneNewer) });
   const l = await Aevion.update.latest();
   assert.equal(l.isNewer, true);
   assert.equal(l.canInstall, false, 'no native bridge in the harness — reporting only');
@@ -100,7 +111,7 @@ test('update: a higher versionCode is newer; install needs Android too', async (
 });
 
 test('update: an older remote version is never offered', async () => {
-  const { Aevion } = app({}, { fetch: manifestFetch({ ...GOOD, versionCode: 6005 }) });
+  const { Aevion } = app({}, { fetch: manifestFetch(oneOlder) });
   const l = await Aevion.update.latest();
   assert.equal(l.isOlder, true);
   assert.equal(l.isNewer, false);
@@ -108,14 +119,14 @@ test('update: an older remote version is never offered', async () => {
 });
 
 test('update: a newer manifest without a checksum is refused outright', async () => {
-  const { Aevion } = app({}, { fetch: manifestFetch({ ...GOOD, versionCode: 6007, fileSha256: undefined }) });
+  const { Aevion } = app({}, { fetch: manifestFetch({ ...oneNewer, fileSha256: undefined }) });
   await assert.rejects(() => Aevion.update.readManifest(), /fileSha256/);
 });
 
 /* ---------- the check lifecycle ---------- */
 
 test('update: checkForUpdate reports up-to-date and stamps lastChecked', async () => {
-  const fetch = manifestFetch({ ...GOOD, versionCode: 6006 });
+  const fetch = manifestFetch(atAppVersion);
   const { Aevion } = app({}, { fetch });
   const r = await Aevion.update.checkForUpdate({ force: true });
   assert.equal(r.state, 'up-to-date');
@@ -124,17 +135,17 @@ test('update: checkForUpdate reports up-to-date and stamps lastChecked', async (
 });
 
 test('update: checkForUpdate reports a newer build, stores it, and emits', async () => {
-  const fetch = manifestFetch({ ...GOOD, versionCode: 6007, versionName: '0.6.7' });
+  const fetch = manifestFetch(oneNewer);
   const { Aevion } = app({}, { fetch });
   const emitted = [];
   Aevion.on('update:new-version', d => emitted.push(d));
   const r = await Aevion.update.checkForUpdate({ force: true });
   assert.equal(r.state, 'newer-available');
   const pending = plain(Aevion.settings.updatePending);
-  assert.equal(pending.versionCode, 6007);
-  assert.equal(pending.versionName, '0.6.7');
+  assert.equal(pending.versionCode, APP_CODE + 1);
+  assert.equal(pending.versionName, '99.1.7');
   assert.equal(emitted.length, 1, 'the card listens for this event');
-  assert.equal(emitted[0].remote.versionCode, 6007);
+  assert.equal(emitted[0].remote.versionCode, APP_CODE + 1);
 });
 
 test('update: a failed check does not stamp lastChecked (no 6-hour lockout)', async () => {
@@ -145,7 +156,7 @@ test('update: a failed check does not stamp lastChecked (no 6-hour lockout)', as
 });
 
 test('update: the rate limit allows a first check and blocks a second', async () => {
-  const fetch = manifestFetch({ ...GOOD, versionCode: 6006 });
+  const fetch = manifestFetch(atAppVersion);
   const { Aevion } = app({}, { fetch });
   assert.equal(Aevion.update.canCheck(), true);
   await Aevion.update.checkForUpdate({ force: true });
@@ -205,7 +216,9 @@ test('update: installApk without consent never reaches the download', async () =
 function fakeBridge(installReply = { ok: true }) {
   const installs = [];
   const plugin = {
-    meta: async () => ({ versionCode: 6007, versionName: '0.6.7' }),
+    // deliberately a version this app will never be, so "the bridge wins"
+    // cannot pass by coincidence on a release where the two happen to agree
+    meta: async () => ({ versionCode: 808008, versionName: '808.0.8' }),
     install: async args => { installs.push(args); return installReply; }
   };
   return { installs, value: { Capacitor: { isNativePlatform: () => true, Plugins: { Update: plugin } } } };
@@ -301,15 +314,15 @@ test('update: initNative caches the bridge version when present', async () => {
   const bridge = fakeBridge();
   const { Aevion } = app({}, { globals: bridge.value });
   await Aevion.update.initNative();
-  assert.equal(Aevion.update.currentVersionCode(), 6007, 'the bridge number wins over the derived one');
+  assert.equal(Aevion.update.currentVersionCode(), 808008, 'the bridge number wins over the derived one');
   const r = Aevion.update.report();
-  assert.equal(r.currentVersionName, '0.6.7', 'report() surfaces the native versionName');
+  assert.equal(r.currentVersionName, '808.0.8', 'report() surfaces the native versionName');
 });
 
 test('update: initNative is a no-op without a bridge', async () => {
   const { Aevion } = createApp();
   await Aevion.update.initNative();
-  assert.equal(Aevion.update.currentVersionCode(), 6006, 'the derived number keeps answering');
+  assert.equal(Aevion.update.currentVersionCode(), APP_CODE, 'the derived number keeps answering');
 });
 
 /* ---------- the report ---------- */

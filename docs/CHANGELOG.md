@@ -1,5 +1,26 @@
 # Aevion — Technical Changelog
 
+## 0.6.7 — installable on the desktop, and an upgrade you can actually receive
+
+### Fixed: the app could not be installed from a browser at all
+- The manifest shipped **only an SVG icon**. Chromium will not offer *Install this site as an app* without a raster icon of at least 144x144, so the one thing the PWA was built for — being installed, not bookmarked — was unreachable in a browser. The manifest now carries `assets/icon-192.png` and `assets/icon-512.png`, and the SVG stays as the scalable fallback.
+- The SVG also animated itself (`<animate>` on the centre dot). That is fine in a tab and wrong for a launcher icon, which is another reason it should never have been the only icon.
+- **New tool `tools/make-icons.ps1`** rasterises `assets/icon.svg` into both PNGs. Rasterising is done by headless Edge/Chrome, because nothing here depends on an SVG library — and a headless screenshot always composites onto white, which is exactly what happened first: the icons came out with white wedges where the artwork's rounded corners should be transparent. The corners are therefore rebuilt **analytically** — the artwork is a 512x512 rect with `rx=110`, so the covered span of each corner row is known exactly and the boundary pixel gets a real coverage value instead of a jagged step. The script checks its own output (corner alpha 0, background dark, centre coloured) and fails if an icon looks wrong, so a silently blank or white-cornered icon cannot ship.
+
+### Added: Aevion as a real desktop app — `tools/install-desktop-app.ps1`
+- One command puts Aevion in the **Start menu and on the desktop**: its own window with no browser chrome, its own multi-resolution icon, one click away. `-Uninstall` removes it. The launcher starts the local server itself if nothing is already listening, so the app opens after a reboot with nothing else running.
+- A `.lnk` that points straight at `powershell.exe` flashes a console on every launch, so the shortcut targets a **`wscript` shim** that runs the launcher with a hidden window style: there is no console at all, only the app window. Both the launcher and the shim are generated from templates in `tools/` (`__TOKEN__` placeholders) rather than written out with here-strings, so each one is a real file that can be syntax-checked on its own.
+- The icon is a genuine multi-resolution `.ico` (16/24/32/48/64/128/256) built from the 512 PNG. Windows picks a different size for the Start menu, the taskbar, alt-tab and Explorer, so a single-size icon looks blurry in most of them.
+
+### Fixed: the localhost twins - one app, two doors, an empty-looking one
+- `http://localhost:8787` and `http://127.0.0.1:8787` are the same server, but a browser treats **every origin as its own world**: separate saved data, separate service worker. Someone who configures their brain through one name and comes back through the other finds an empty app - the most common shape of "it says NO BRAIN". `serve.ps1` and the dev server now bind **both** names but open only the canonical `http://127.0.0.1:8787` (the address the installed app and the desktop launcher use), and the service worker **shares its cache across the twins**: on every release the fresher worker copies shared assets to the other door, so a first visit through the non-canonical name boots warm instead of re-fetching ~7 MB. Saved *data* still never crosses origins - that is the platform's privacy rule, not something to engineer around - but every door now leads to the same, warm app.
+
+### Fixed: an APK built from the repo advertised itself as version 1.0
+- `android-wrapper/android/app/build.gradle` still hardcoded `versionCode 1` / `versionName "1.0"`, while the build folder's copy derives both from the packaged web app (`js/core.js` -> `major*10^6 + minor*10^3 + patch`). Since the repo is the source of truth, a build made from a fresh clone claimed **versionCode 1** — and Android refuses an install whose versionCode goes backwards, so that APK could never be installed over a 0.6.x release. The version-deriving file is now in the repo, which also means an APK still cannot advertise a version it does not contain.
+
+### Changed
+- Version 0.6.7 everywhere (`core.js`, `package.json`, `sw.js` cache `aevion-v0.6.7`, all 23 `?v=` asset tags, the CI workflow), so the icon and desktop work actually reach an installed client. `tools/check.mjs` still fails the build if any of these disagree.
+
 ## 0.6.6 — the app updates itself, the way an app store does
 
 ### Added: in-place self-update — new signed build over the old one, data untouched

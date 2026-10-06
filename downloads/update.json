@@ -1,8 +1,8 @@
 {
-  "versionCode": 6006,
-  "versionName": "0.6.6",
-  "downloadUrl": "https://raw.githubusercontent.com/vigneshs07092009-boop/Vignesh/main/downloads/Aevion-0.6.6.apk",
-  "fileSha256": "e39d240b5bf0e3b89a24da3792eee3810abb97657e043e06768ca8d58d06a68b",
-  "minVersionCode": 0,
-  "note": "First build with in-place self-update (Settings - App updates). Data is kept; nothing is uninstalled."
+    "versionCode":  6007,
+    "versionName":  "0.6.7",
+    "downloadUrl":  "https://raw.githubusercontent.com/vigneshs07092009-boop/Vignesh/main/downloads/Aevion-0.6.7.apk",
+    "fileSha256":  "0b03649cb41b720a74ec96a97d86f93e8ce0d8e835f5dbebbd8b97a054f1952e",
+    "minVersionCode":  0,
+    "note":  ""
 }

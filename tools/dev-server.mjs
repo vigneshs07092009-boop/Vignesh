@@ -1,9 +1,10 @@
 /* ============================================================
- * Aevion dev server — zero dependencies, non-Windows-only.
+ * Aevion dev server — zero dependencies, works on every OS.
  *
  *   node tools/dev-server.mjs [port]
  *
- * Serves `aevion/` over http://127.0.0.1:8787 (default). Handy for
+ * Serves `aevion/` on http://localhost:8787 (default) AND
+ * http://127.0.0.1:8787 — the two names people actually type. Handy for
  * testing the PWA, the service worker and the UI on any OS; on Windows
  * `aevion/serve.ps1` does the same thing and opens a browser.
  *
@@ -31,6 +32,10 @@ const TYPES = {
   '.woff2': 'font/woff2'
 };
 
+// Browsers treat http://localhost and http://127.0.0.1 as two different
+// origins — separate storage, separate service worker — even though both
+// names are this same machine. Serving on both keeps every door someone
+// might open pointed at the one app.
 createServer(async (req, res) => {
   const rel = decodeURIComponent(req.url.split('?')[0]);
   const target = path.join(ROOT, rel === '/' ? 'index.html' : rel);
@@ -49,6 +54,8 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found');
   }
-}).listen(PORT, '127.0.0.1', () => {
-  console.log(`Aevion serving ${ROOT} on http://127.0.0.1:${PORT}`);
+}).listen(PORT, () => {
+  console.log(`Aevion serving ${ROOT}`);
+  console.log(`  http://127.0.0.1:${PORT}        (canonical - the installed app and the desktop launcher open this)`);
+  console.log(`  http://localhost:${PORT}        (same app; its service worker warms its cache from the canonical one)`);
 });

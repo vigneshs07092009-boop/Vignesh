@@ -113,8 +113,8 @@ jobs:
           unzip -p "$APK" AndroidManifest.xml | grep -q "android.speech.RecognitionService" || { echo "speech <queries> entry missing from manifest"; exit 1; }
           echo "PASS: manifest carries RECORD_AUDIO + speech queries"
 
-          # web assets are the current version (ver bump in index.html = 050)
-          unzip -p "$APK" assets/public/index.html | grep -q '?v=066' || { echo "index.html not at v=066 — likely stale"; exit 1; }
+          # web assets are the current version (ver bump in index.html = 067)
+          unzip -p "$APK" assets/public/index.html | grep -q '?v=067' || { echo "index.html not at v=067 - likely stale"; exit 1; }
           echo "PASS: web assets are the current version"
 
           # the event-payload fix is really in packaged core.js

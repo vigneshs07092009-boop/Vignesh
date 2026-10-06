@@ -92,7 +92,9 @@ check('service worker cache list is accurate', () => {
   const sw = read('aevion/sw.js');
   const listed = [...sw.matchAll(/'(\.\/[^']+)'/g)].map(m => m[1]);
   if (!listed.length) return 'sw.js lists no assets';
-  const missing = listed.filter(p => p !== './' && !there(path.join('aevion', p.replace(/^\.\//, ''))));
+  // __twin-sync is a marker the worker writes into its own cache (twin-origin
+  // warm-up bookkeeping), not a file on disk; everything else must exist.
+  const missing = listed.filter(p => p !== './' && p !== './__twin-sync' && !there(path.join('aevion', p.replace(/^\.\//, ''))));
   return missing.length ? `cached but not on disk: ${missing.join(', ')}` : null;
 });
 
@@ -176,7 +178,10 @@ check('CI workflow verifies the current asset version', () => {
 });
 check('APK verifier checks the current version', () => {
   const ps = read('android-wrapper/verify-apk.ps1');
-  return ps.includes(`?v=0`) ? null : 'verify-apk.ps1 has no asset-version check';
+  // The verifier derives the expected tag from the bundled core.js version
+  // ($vShort = version with dots stripped), so it always checks the current
+  // one; what must never disappear is that derivation itself.
+  return ps.includes("$vShort = $webVersion -replace") ? null : 'verify-apk.ps1 no longer derives the cache-busting tag from the bundled version';
 });
 
 /* ---------- 8. Android manifest keeps what voice needs ---------- */

@@ -51,7 +51,7 @@ async function capturePermission(constraints) {
   } catch { return 'denied'; }
 }
 
-window.Aevion = {    version: '0.6.6',
+window.Aevion = {    version: '0.6.7',
   bus: new EventTarget(),
   emit(ev, data) { this.bus.dispatchEvent(new CustomEvent(ev, { detail: data })); },
   // handlers receive the payload itself, not the CustomEvent wrapper
