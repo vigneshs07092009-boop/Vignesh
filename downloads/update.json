@@ -1,8 +1,8 @@
 {
-    "versionCode":  6007,
-    "versionName":  "0.6.7",
-    "downloadUrl":  "https://raw.githubusercontent.com/vigneshs07092009-boop/Vignesh/main/downloads/Aevion-0.6.7.apk",
-    "fileSha256":  "0b03649cb41b720a74ec96a97d86f93e8ce0d8e835f5dbebbd8b97a054f1952e",
-    "minVersionCode":  0,
-    "note":  ""
+  "versionCode": 6007,
+  "versionName": "0.6.7",
+  "downloadUrl": "https://raw.githubusercontent.com/vigneshs07092009-boop/Vignesh/main/downloads/Aevion-0.6.7.apk",
+  "fileSha256": "0b03649cb41b720a74ec96a97d86f93e8ce0d8e835f5dbebbd8b97a054f1952e",
+  "minVersionCode": 0,
+  "note": "First update delivered in place: install it from Settings - App updates and nothing is uninstalled. Desktop install fixed, icons real."
 }
