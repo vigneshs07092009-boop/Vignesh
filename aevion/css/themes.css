@@ -1,7 +1,12 @@
 /* ============ Aevion Theme System ============
-   Every theme only redefines CSS variables.
-   Add your own theme by copying a block and
-   registering it in js/app.js (THEMES list). */
+   Every theme is just a set of CSS variables, and js/theme.js can override
+   any of them one at a time on top of the theme you picked — that is what
+   Settings → Custom theme edits. Adding a whole theme is still a block here
+   plus one name in THEMES in js/theme.js.
+
+   The last four are the non-colour knobs, so a theme can change shape and
+   size, not only hue. --glow is replaced with an accent-derived shadow when
+   the glow knob is used. */
 
 :root, [data-theme="cyber"] {
   --bg: #0a0e1a;
@@ -15,7 +20,10 @@
   --danger: #ff5c7a;
   --ok: #3ddc84;
   --glow: 0 0 18px #37e0c833;
+  /* shape and size, overridable by the user over any theme */
   --radius: 14px;
+  --fs-scale: 1;
+  --blur: 14px;
 }
 
 [data-theme="midnight"] {

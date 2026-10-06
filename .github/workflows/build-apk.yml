@@ -114,12 +114,18 @@ jobs:
           echo "PASS: manifest carries RECORD_AUDIO + speech queries"
 
           # web assets are the current version (ver bump in index.html = 050)
-          unzip -p "$APK" assets/public/index.html | grep -q '?v=050' || { echo "index.html not at v=050 — likely stale"; exit 1; }
+          unzip -p "$APK" assets/public/index.html | grep -q '?v=066' || { echo "index.html not at v=066 — likely stale"; exit 1; }
           echo "PASS: web assets are the current version"
 
           # the event-payload fix is really in packaged core.js
           unzip -p "$APK" assets/public/js/core.js | grep -q 'e && e.detail' || { echo "event-payload fix missing from core.js"; exit 1; }
           echo "PASS: event-payload fix is in core.js"
+
+          # every feature module really made it into the packaged web app
+          for f in js/providers.js js/tools.js js/memory.js; do
+            unzip -p "$APK" "assets/public/$f" | grep -q 'Aevion' || { echo "$f missing from the APK"; exit 1; }
+          done
+          echo "PASS: providers, tools and memory modules are packaged"
 
           echo "=== verification complete — APK is safe to download ==="
         env:

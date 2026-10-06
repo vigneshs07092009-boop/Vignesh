@@ -10,15 +10,19 @@ android-wrapper/
 │   ├── app/src/main/
 │   │   ├── AndroidManifest.xml    permissions + <queries> for speech
 │   │   ├── java/com/aevion/app/
-│   │   │   ├── SpeechPlugin.java  ← native speech recognition + TTS
-│   │   │   └── MainActivity.java  registers the plugin
-│   │   └── res/                   icons, splash, styles
+│   │   │   ├── SpeechPlugin.java         ← native speech recognition + TTS
+│   │   │   ├── AppsPlugin.java           ← list/launch installed apps (read-only)
+│   │   │   ├── UpdatePlugin.java         ← in-place self-update (PackageInstaller)
+│   │   │   ├── UpdateStatusReceiver.java ← surfaces Android's install dialog
+│   │   │   └── MainActivity.java         registers every plugin
+│   │   └── res/                   icons, splash, styles, FileProvider paths
 │   └── gradle/ gradlew*           Gradle wrapper
 ├── capacitor.config.json          appId com.aevion.app, webDir www
 ├── package.json / package-lock.json   @capacitor/* 8.5.2
 ├── update-and-rebuild.bat         one click: web app → sync → build → Aevion.apk
 ├── build-apk.ps1                  Gradle assembleDebug with JAVA_HOME/ANDROID_HOME set
-├── verify-apk.ps1                 11 static checks on the built APK
+├── verify-apk.ps1                 28 static checks on the built APK
+├── install-to-phone.ps1           adb install -r (in place) + proves the update
 └── sync-wrapper.bat               keeps this folder and your build folder identical
 ```
 
@@ -71,7 +75,15 @@ Then check it actually contains what you think:
 powershell -NoProfile -ExecutionPolicy Bypass -File verify-apk.ps1
 ```
 
-It verifies the plugin classes are really in `classes.dex`, the manifest permissions and `<queries>` entry, and that the packaged web assets are the current version — a build that silently drops the plugin is otherwise invisible until you talk to your phone.
+It verifies the plugin classes are really in `classes.dex`, the manifest permissions and `<queries>` entry, `REQUEST_INSTALL_PACKAGES`, the consent and checksum gates inside `update.js`, and that the packaged web assets are the current version — a build that silently drops the plugin or a safety gate is otherwise invisible until you talk to your phone.
+
+Then put it on the phone **without losing any data**:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File install-to-phone.ps1
+```
+
+It waits for a USB-connected phone, runs `adb install -r` (replace, keeps app data), then prints `firstInstallTime` and `lastUpdateTime` — an unchanged `firstInstallTime` is the proof it replaced in place rather than uninstall-and-reinstall. Add `-Wait 300` to hold for the phone, or `-Log` to tail the app's log afterwards. The manual equivalent is `adb install -r "C:\Users\vigne\OneDrive\Documents\Aevion.apk"`.
 
 Node, JDK 21 and the Android SDK live in `C:\Users\vigne\aevion-tools` (outside your system `PATH`). All three scripts read their paths from the config block at the top — edit those lines if you move the toolchain. `build-apk.ps1` falls back to `JAVA_HOME`/`ANDROID_HOME` if the portable copies are missing, so it also works on a machine with a normal Android Studio install.
 
@@ -110,7 +122,7 @@ It copies the hand-written files (`java/**`, `AndroidManifest.xml`, `capacitor.c
 
 ## Release builds
 
-This project builds **debug**-signed APKs, which is all sideloading needs. For the Play Store you need a release signing key and an AAB:
+The daily driver is the **release** build signed with the project key (`Aevion-keystore/aevion-release.jks`, alias `aevion`), because the self-updater refuses an APK signed with a different key than the installed app — that is Android protecting your data, not a bug. `build-release.ps1` in the build folder builds it, publishes `Documents\Aevion.apk`, and writes `downloads\Aevion-<ver>.apk` + `downloads\update.json` into the repo for the updater to find. Debug-signed APKs (`build-apk.ps1`) are fine for trying things out, but installing one over a release build, or vice versa, will be refused as a signature mismatch. For the Play Store you additionally need an AAB:
 
 ```bash
 keytool -genkey -v -keystore aevion-release.jks -alias aevion -keyalg RSA -keysize 2048 -validity 10000

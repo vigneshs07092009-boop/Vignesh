@@ -52,35 +52,82 @@
   };
 
   /* ---------- engine loading ---------- */
-  W.load = function (modelId, onProgress) {
+  /* ---------- the runtime file, and the watchdog ----------
+     The engine is vendored as a single ESM file, but its WebAssembly runtime
+     is resolved by Emscripten *next to that file* (vendor/tvmjs_runtime.wasm).
+     A bundle shipped without it does not error — it waits forever, with no
+     progress and no message, which is the worst possible way to look broken.
+     So the file is asked for first, and every load carries a watchdog. */
+  W.RUNTIME_FILE = 'vendor/tvmjs_runtime.wasm';
+  W.STALL_MS = 60000;
+
+  /* Same-origin GET, headers only: this never leaves the device. */
+  W.checkRuntime = async function () {
+    if (W.runtimeMissing !== undefined) return !W.runtimeMissing;
+    W.runtimeMissing = false;
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const r = await fetch(W.RUNTIME_FILE, { method: 'GET', signal: ctl ? ctl.signal : undefined });
+      W.runtimeMissing = !(r && r.ok);
+      if (ctl) ctl.abort();          // the headers were the whole question
+    } catch {
+      W.runtimeMissing = true;
+    }
+    return !W.runtimeMissing;
+  };
+
+  W.load = async function (modelId, onProgress) {
     if (W.loading) throw new Error('A model is already loading — wait for it to finish.');
     if (!W.gpuSupported()) throw new Error('WebGPU not available in this browser (use Chrome/Edge 113+).');
 
     const mod = W.MODELS.find(m => m.id === modelId);
     if (!mod) throw new Error('Unknown model: ' + modelId);
 
+    if (!(await W.checkRuntime())) {
+      W.loading = false;
+      throw new Error('This build of Aevion is missing the engine’s runtime file (' + W.RUNTIME_FILE +
+        '), so no in-browser model can start. Nothing else is affected: use a server on your own machine (Ollama, LM Studio) ' +
+        'or a hosted key — the 🧠 card above the chat box checks which of those are reachable.');
+    }
+
     W.loading = true;
-    return import('../vendor/webllm.esm.js')
-      .then(webllm => webllm.CreateMLCEngine(modelId, {
-        initProgressCallback: p => {
-          // p.progress: 0..1, p.text: human-readable status
-          if (onProgress) onProgress(p);
+    W.progressAt = Date.now();
+    let watchdog = null;
+    const stalled = new Promise((_, reject) => {
+      watchdog = setInterval(() => {
+        if (!W.loading) return;
+        if (Date.now() - W.progressAt > W.STALL_MS) {
+          reject(new Error('the model stopped making progress for ' + Math.round(W.STALL_MS / 1000) +
+            ' s — this network may be blocking the model files, or the GPU ran out of memory. Nothing was changed; you can try again.'));
         }
-      }))
-      .then(engine => {
-        W.engine = engine;
-        W.loadedModel = modelId;
-        W.loading = false;
-        const done = W.storedProgress();
-        if (!done.includes(modelId)) { done.push(modelId); Aevion.store.set('webllmDownloaded', done); }
-        return engine;
-      })
-      .catch(e => {
-        W.loading = false;
-        W.engine = null;
-        W.loadedModel = null;
-        throw e;
-      });
+      }, 5000);
+    });
+
+    try {
+      const webllm = await import('../vendor/webllm.esm.js');
+      const engine = await Promise.race([
+        webllm.CreateMLCEngine(modelId, {
+          initProgressCallback: p => {
+            W.progressAt = Date.now();
+            // p.progress: 0..1, p.text: human-readable status
+            if (onProgress) onProgress(p);
+          }
+        }),
+        stalled
+      ]);
+      W.engine = engine;
+      W.loadedModel = modelId;
+      const done = W.storedProgress();
+      if (!done.includes(modelId)) { done.push(modelId); Aevion.store.set('webllmDownloaded', done); }
+      return engine;
+    } catch (e) {
+      W.engine = null;
+      W.loadedModel = null;
+      throw e;
+    } finally {
+      W.loading = false;
+      if (watchdog) clearInterval(watchdog);
+    }
   };
 
   W.unload = async function () {

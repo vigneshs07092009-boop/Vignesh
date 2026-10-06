@@ -8,6 +8,13 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- The installed-app list (AppsPlugin): Android 11+ hides every app
+             that is not declared here, and an empty list is exactly the
+             failure it looks like. This makes launchable apps visible. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application
@@ -45,6 +52,12 @@
     </application>
 
     <!-- Permissions -->
+
+    <!-- In-place self-update: lets the package installer accept Aevion's own
+         new signed build (Play-Store-style, no uninstall, data kept). The
+         user still grants "install unknown apps" in system settings and
+         approves every single install in Android's own dialog. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

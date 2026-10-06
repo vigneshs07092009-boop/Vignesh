@@ -76,6 +76,22 @@ Write-Host ""
 Write-Host "Web assets"
 $index = EntryText "assets/public/index.html"
 Check "index.html versioned (>= v=050)" ($index -and $index.Contains("?v=0")) "asset versions missing"
+
+# The packaged assets must be the version this repo claims — a stale copy of
+# www/ is invisible in a passing build otherwise.
+$pkgPath = Join-Path (Split-Path $root -Parent) 'package.json'
+if (Test-Path $pkgPath) {
+  $ver = (Get-Content $pkgPath -Raw | ConvertFrom-Json).version
+  $vShort = $ver -replace '\.', ''
+  Check "assets are v=$vShort (package.json $ver)" ($index -and $index.Contains("?v=$vShort")) "packaged web assets are a different version - re-run cap sync"
+}
+
+$providers = EntryText "assets/public/js/providers.js"
+Check "providers.js bundled" ($providers -and $providers.Contains('Aevion.providers')) "missing - no AI provider layer in the APK"
+$tools = EntryText "assets/public/js/tools.js"
+Check "tools.js bundled" ($tools -and $tools.Contains('Aevion.tools')) "missing - no permission-tiered tool layer in the APK"
+$memory = EntryText "assets/public/js/memory.js"
+Check "memory.js bundled" ($memory -and $memory.Contains('memory:longterm')) "missing - no layered memory in the APK"
 $core = EntryText "assets/public/js/core.js"
 Check "core.js present" ($core -and $core.Length -gt 1000) "missing"
 Check "core.js unwraps event payloads" ($core -and $core.Contains("e && e.detail")) "event fix missing - voice input would send [object CustomEvent]"

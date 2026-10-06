@@ -90,6 +90,21 @@
       comment: C_BOTH, string: S_MULTI,
       kw: K('abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using var virtual void volatile while async await record')
     }),
+    dart: mk({
+      comment: C_BOTH, string: S_MULTI,
+      kw: K('abstract as assert async await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for get hide if implements import in interface is late library mixin new null on operator part required rethrow return set show static super switch sync this throw true try typedef var void while with yield'),
+      extra: [['tok-typ', /\b(?:int|double|num|bool|String|List|Map|Set|Object|Future|Stream|Iterable|Widget|BuildContext|State)\b/], ['tok-fn', /@[\w.]+/]]
+    }),
+    ps: [
+      ['tok-cmt', /<#[\s\S]*?#>|#[^\n]*/],
+      ['tok-str', /"(?:`[\s\S]|[^"`])*"|'[^'\n]*'/],
+      ['tok-var', /\$\{[^}\n]*\}|\$[\w:]+/],
+      ['tok-fn', /\b[A-Z][a-z]+-[A-Z]\w*\b/],                          // Verb-Noun cmdlets
+      ['tok-kw', I('param function filter begin process end if elseif else switch foreach for while do until break continue return try catch finally throw trap class enum using in exit')],
+      ['tok-typ', /\[\s*[A-Za-z_][\w.]*\s*\]/],                        // [string] type accelerators
+      ['tok-num', /\b\d+(?:\.\d+)?\b/],
+      ['tok-op', /\|\||-eq|-ne|-gt|-lt|-and|-or|-not|--?\w+|[|&;<>()=+*\/]{1,2}/]
+    ],
     go: mk({
       comment: C_BOTH, string: /`[^`]*`|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/,
       kw: K('break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false make new len cap append copy delete panic recover error string int int64 int32 float64 float32 bool byte rune any err')
@@ -180,6 +195,7 @@
     python: 'py', python3: 'py', py3: 'py',
     'c++': 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', 'c#': 'cs', csharp: 'cs',
     golang: 'go', rust: 'rs', ruby: 'rb', kotlin: 'kt',
+    powershell: 'ps', ps1: 'ps', pwsh: 'ps', command: 'ps',
     xml: 'html', svg: 'html', vue: 'html', htm: 'html', markup: 'html',
     scss: 'css', less: 'css', sass: 'css',
     bash: 'sh', shell: 'sh', zsh: 'sh', console: 'sh', terminal: 'sh',
@@ -406,8 +422,14 @@
     return el;
   };
 
-  /* cheap streaming guard: fenced code mid-stream re-renders too often */
-  M.canStream = src => !/```|~~~/.test(String(src || ''));
+  /* Cheap streaming guard: re-rendering mid-fence is wasted work, but a
+     *closed* fence is fine — so count fences instead of looking for any. */
+  M.canStream = function (src) {
+    const s = String(src || '');
+    const ticks = (s.match(/```/g) || []).length;
+    const waves = (s.match(/~~~/g) || []).length;
+    return ticks % 2 === 0 && waves % 2 === 0;
+  };
 
   /* plain text for text-to-speech: nobody wants asterisks read aloud */
   M.toPlain = function (src) {

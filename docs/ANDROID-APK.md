@@ -90,7 +90,7 @@ android-wrapper\sync-wrapper.bat         # keep the two copies identical (newer 
 
 All three derive their own location (`%~dp0` / `$PSScriptRoot`), and `update-and-rebuild.bat` finds the web app as its sibling `..\aevion`, so the same files work from either folder. The scripts read Node/JDK/SDK from a config block at the top; edit those lines if you move the toolchain. `build-apk.ps1` falls back to `JAVA_HOME`/`ANDROID_HOME` if the portable copies are missing.
 
-`verify-apk.ps1` runs 12 static checks on the built APK — plugin classes present in `classes.dex`, `RECORD_AUDIO` and the `<queries>` entry, current web assets. A build that silently drops the plugin is otherwise invisible until you try to talk to your phone.
+`verify-apk.ps1` runs 28 static checks on the built APK — plugin classes present in `classes.dex`, `RECORD_AUDIO` and the `<queries>` entry, `REQUEST_INSTALL_PACKAGES`, the consent/checksum gates inside `update.js`, and the current web assets. A build that silently drops a plugin or a safety gate is otherwise invisible until you try to talk to your phone.
 
 ### Two copies, one source of truth
 
@@ -102,10 +102,69 @@ Add only what you use to `android/app/src/main/AndroidManifest.xml`:
 
 - `RECORD_AUDIO` + `MODIFY_AUDIO_SETTINGS` — voice input (Android's recognizer also needs its own service visible via `<queries>`)
 - `INTERNET` — only needed if you enable online features
+- `REQUEST_INSTALL_PACKAGES` — the self-updater (§7)
 
-Aevion's permission manager surfaces the Android runtime dialogs at first use, and Capacitor's `BridgeWebChromeClient` routes WebView mic requests through the same OS dialog. Nothing is bypassed, and nothing listens until you tap the mic.
+Aevion's permission manager surfaces the Android runtime dialogs at first use, and Capacitor's `BridgeWebChromeClient` routes WebView mic requests through the same OS dialog. Nothing is bypassed, and nothing listens until you tap the mic. `REQUEST_INSTALL_PACKAGES` is not a runtime permission — Android asks the user to allow it per-source the first time an install is attempted.
 
-## 7. Play Store later?
+## 7. Installing and updating in place
+
+From 0.6.6 the app updates itself the way a Play Store app does: it recognises a newer **signed** build, downloads it, and hands it to Android's own package installer, which replaces the app **in place**. Nothing is uninstalled, and app data is kept.
+
+The APK must be signed with the **same key** as the installed build (`Aevion-keystore/aevion-release.jks`, alias `aevion`). A different key is a different app to Android and the install is refused — that is the platform protecting your data, not a bug. The version is read from `versionCode` (currently `6006` for `0.6.6`), never from the display string.
+
+### Install over USB with adb (first install, or forcing a build)
+
+1. On the phone: **Settings → About phone → tap Build number 7×**, then **Settings → Developer options → USB debugging** on.
+2. Plug it in. On the phone tap **Allow** on the *"Allow USB debugging?"* prompt (tick *Always allow from this computer*). If no prompt appears, revoke authorisations in Developer options and try a different cable/port — charge-only cables never work.
+3. Confirm the PC can see it:
+
+   ```bash
+   adb devices -l
+   ```
+
+   Expect a line ending in `device` with a model name. `unauthorized` means the on-screen prompt is still waiting; `offline` usually means a stale daemon — `adb kill-server && adb devices`.
+
+4. Install (or update) without touching your data:
+
+   ```bash
+   adb install -r "C:\Users\vigne\OneDrive\Documents\Aevion.apk"
+   ```
+
+   `-r` is *replace*, which is what keeps the data. Without it Android refuses to install over an existing app and tells you to uninstall first — don't. `-d` allows a version-code downgrade; only useful when deliberately reinstalling an older build.
+
+5. Check what landed:
+
+   ```bash
+   adb shell dumpsys package com.aevion.app | grep -E "versionCode|versionName|firstInstallTime|lastUpdateTime"
+   ```
+
+   `lastUpdateTime` moving while `firstInstallTime` stays put is the proof the update was in place.
+
+   `android-wrapper/install-to-phone.ps1` does all of this in one step — it waits for the phone, installs with `-r`, and prints the before/after `versionCode`, `firstInstallTime` and `lastUpdateTime` so the "in place" claim is shown rather than assumed (`-Wait 300` to hold for the phone, `-Log` to tail the app log afterwards).
+
+### Installing by hand (no cable)
+
+1. Copy `Aevion.apk` to the phone (USB file transfer, Google Drive, or `adb push Aevion.apk /sdcard/Download/`).
+2. Tap the file in **Files**. Android will say the source can't install unknown apps and offer a **Settings** button — tap it, enable **Allow from this source** for the Files app, then go back and tap **Install**.
+3. That prompt is per-source and one-time; it is required for *any* APK that isn't from the Play Store. Enabling it does not let other apps install silently.
+
+### The in-app updater
+
+**Settings → App updates** shows the running version and a **Check** button. The flow, in order:
+
+1. A quiet check runs a couple of seconds after boot (skipped when offline, at most once every six hours). **Check** forces one.
+2. The manifest is fetched from `updateUrl` (default: `downloads/update.json` in this repo, served by `raw.githubusercontent.com`). Override it in settings for a fork.
+3. The manifest is validated **before** anything else happens: `versionCode` a positive integer, `downloadUrl` **https** only, `fileSha256` **64 hex characters**. A malformed manifest is a refusal, not a best-effort parse.
+4. If `versionCode` is newer, the app offers the download. The APK is fetched, its SHA-256 is recomputed over the raw bytes and compared to the manifest — a mismatch aborts before anything is handed to Android.
+5. The verified bytes go to `UpdatePlugin`, which verifies the digest **a second time in Java**, writes the file to its own cache and starts a `PackageInstaller` session. Android asks for confirmation; the app never installs anything quietly.
+6. **Consent is required twice over**: the Evolve consent gate must be on, *and* the install call must carry `consent: true` from a user tap. Either one missing and the call returns a refusal code instead of installing.
+7. On a successful replace the pending-update flag clears and the app reports the new version; a failed or cancelled install changes nothing.
+
+On the web (and in the plain PWA) steps 5–7 are skipped — `downloadApk()` is Android-only — and the update card just points at the download URL.
+
+To publish a release for the updater: build, then commit `downloads/Aevion-<version>.apk` and `downloads/update.json` (the build script writes both, with the hash filled in). The APK is served straight from `raw.githubusercontent.com`, which sends `Access-Control-Allow-Origin: *` — no server, no hosting bill. Bump `versionCode` in `update.json` and the app picks it up on the next check.
+
+## 8. Play Store later?
 
 Generate an upload key, build an AAB, enroll in Play Console:
 

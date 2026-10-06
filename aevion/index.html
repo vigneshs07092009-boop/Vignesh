@@ -7,8 +7,8 @@
 <title>Aevion — Private AI Assistant</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/themes.css?v=050">
-<link rel="stylesheet" href="css/style.css?v=050">
+<link rel="stylesheet" href="css/themes.css?v=066">
+<link rel="stylesheet" href="css/style.css?v=066">
 </head>
 <body>
 <div id="boot" class="boot">
@@ -28,13 +28,13 @@
 </div>
 
 <header id="hud">
-  <button id="navToggle" class="icon-btn" title="Menu">☰</button>
+  <button id="navToggle" class="icon-btn" title="Menu" aria-label="Show or hide the menu" aria-expanded="true">☰</button>
   <div class="hud-brand" id="hudName">AEVION</div>
   <div class="hud-status">
     <span id="hudMode" class="pill mode-local">LOCAL</span>
     <span id="hudNet" class="pill net-off" title="Internet reachability">OFFLINE</span>
+    <button type="button" id="hudWake" class="pill wake-off hidden" title="Hands-free wake word — tap to turn it on or off">WAKE</button>
   </div>
-  <button id="micBtn" class="icon-btn mic" title="Voice input">🎤</button>
 </header>
 
 <nav id="side">
@@ -42,11 +42,14 @@
     <button class="nav-item active" data-view="chat">💬 <span>Assistant</span></button>
     <button class="nav-item" data-view="studio">🎓 <span>Studio</span></button>
     <button class="nav-item" data-view="organizer">🗂️ <span>Organizer</span></button>
+    <button class="nav-item" data-view="memory">🧠 <span>Memory</span></button>
+    <button class="nav-item" data-view="tools">🧰 <span>Tools</span></button>
     <button class="nav-item" data-view="files">📁 <span>Files</span></button>
     <button class="nav-item" data-view="automations">⚡ <span>Automations</span></button>
     <button class="nav-item" data-view="devices">🔗 <span>Devices</span></button>
     <button class="nav-item" data-view="plugins">🧩 <span>Plugins</span></button>
     <button class="nav-item" data-view="settings">⚙️ <span>Settings</span></button>
+    <button class="nav-item" data-view="voice">🎤 <span>Voice</span></button>
   </div>
   <div class="side-foot">v<span id="verLabel">?</span> · local-first · no login</div>
 </nav>
@@ -56,10 +59,51 @@
   <!-- ================= ASSISTANT / CHAT ================= -->
   <section class="view active" id="view-chat">
     <div id="chatLog" aria-live="polite"></div>
+
+    <!-- Which brain is answering — and the one tap that fixes it when none
+         is. Rendered by renderBrainCard() from Aevion.setup.survey(), so it
+         shows up only when something is genuinely wrong, and never as a
+         permanent banner. -->
+    <div class="card brain-card" id="brainCard" hidden>
+      <h3>🧠 <span id="brainCardTitle">Checking which brain answers…</span></h3>
+      <p class="muted" id="brainCardWhy"></p>
+      <ul class="list" id="brainOptions"></ul>
+      <div class="row">
+        <button id="brainBest" class="btn primary" disabled>⚡ Use the best brain I have</button>
+        <button id="brainInBrowser" class="btn">🧠 Use the in-browser model</button>
+      </div>
+      <div class="row">
+        <button id="brainMachine" class="btn">🖥 Look for a server on this PC</button>
+      </div>
+      <!-- Free to start: this list is built from the provider registry (every
+           adapter flagged `free` with a link to where its key comes from), so
+           it cannot drift from the providers that actually work. -->
+      <div class="row">
+        <select id="brainFree" title="Providers with a free tier"></select>
+        <button id="brainDocs" class="btn">🔑 Get a free key</button>
+      </div>
+      <div class="row" id="brainKeyRow" hidden>
+        <input id="brainKey" type="password" placeholder="Paste the key here — it never leaves this device" autocomplete="off">
+        <button id="brainKeySave" class="btn primary">Save &amp; use it</button>
+      </div>
+      <div class="row"><button id="brainDismiss" class="btn">Not now — keep the offline brain</button></div>
+      <div class="out" id="brainOut"></div>
+      <p class="muted small" id="brainCardNote"></p>
+    </div>
+    <!-- One-tap shortcuts for the features that are otherwise a few taps
+         deep. Built in js/app.js (QUICK), scrolls sideways, never wraps. -->
+    <div id="quickActions" class="quick" role="group" aria-label="Things you can ask for"></div>
+    <!-- Chips for whatever is attached right now, one row, above the box.
+         Built from js/attach.js: photo, video, document, PDF. -->
+    <div id="attachChips" class="attach-chips" hidden></div>
     <div class="composer">
-      <button id="translateToggle" class="icon-btn" title="Toggle translator mode">🌐</button>
+      <button id="micBtn" class="icon-btn mic" title="Voice input" aria-label="Speak instead of typing">🎤</button>
+      <button id="attachBtn" class="icon-btn" title="Attach a photo, video, document or PDF" aria-label="Attach a photo, video, document or PDF">📎</button>
+      <!-- the accept list mirrors Aevion.attach.ACCEPT in js/attach.js -->
+      <input type="file" id="attachInput" multiple hidden accept="image/*,video/*,application/pdf,.doc,.docx,.odt,.rtf,.txt,.md,.csv,.tsv,.json,.log,.xml,.yml,.yaml,.ppt,.pptx,.xls,.xlsx">
+      <button id="translateToggle" class="icon-btn" title="Toggle translator mode" aria-label="Toggle translator mode">🌐</button>
       <textarea id="chatInput" rows="1" placeholder="Ask Aevion…  (/help for commands)"></textarea>
-      <button id="sendBtn" class="icon-btn send" title="Send">➤</button>
+      <button id="sendBtn" class="icon-btn send" title="Send" aria-label="Send">➤</button>
     </div>
   </section>
 
@@ -140,6 +184,100 @@
     </div>
   </section>
 
+  <!-- ================= MEMORY ================= -->
+  <section class="view" id="view-memory">
+    <h2>🧠 Memory</h2>
+    <p class="muted">Five separate layers, all stored on this device. Nothing is remembered without your action, and preferences Aevion <i>notices</i> stay inert until you approve them.</p>
+
+    <div class="card">
+      <h3>Layers</h3>
+      <ul id="memLayers" class="list"></ul>
+      <div class="row"><label>Auto-remember facts I state</label><input type="checkbox" id="setMemory2"></div>
+    </div>
+
+    <div class="card">
+      <h3>What Aevion can recall</h3>
+      <p class="muted">Scored local retrieval — no model call, no network. Try a question you care about and see exactly what would be used.</p>
+      <div class="row"><input id="memQuery" placeholder="e.g. when is my exam"><button id="memRecallBtn" class="btn">Preview</button></div>
+      <div class="out" id="memRecall"></div>
+    </div>
+
+    <div class="card">
+      <h3>Waiting for your approval <span class="muted" id="memPendingCount"></span></h3>
+      <p class="muted">These were inferred, not stated. Approve one and it becomes usable memory; reject it and it is deleted.</p>
+      <ul id="memPending" class="list"></ul>
+    </div>
+
+    <div class="card">
+      <h3>Saved facts</h3>
+      <div class="row"><input id="memAdd" placeholder="Add something Aevion should remember…"><button id="memAddBtn" class="btn primary">Save</button></div>
+      <ul id="memList" class="list"></ul>
+    </div>
+
+    <div class="card">
+      <h3>Your control</h3>
+      <div class="row">
+        <button id="memExport" class="btn">Export memory</button>
+        <button id="memClearTemp" class="btn">Clear temporary</button>
+        <button id="memClearConvo" class="btn">Clear conversation</button>
+        <button id="memClearAll" class="btn danger">Erase all memory</button>
+      </div>
+      <p class="muted">Erasing memory also drops the conversation history and every temporary note. Your notes, tasks and files are separate and stay.</p>
+    </div>
+  </section>
+
+  <!-- ================= TOOLS ================= -->
+  <section class="view" id="view-tools">
+    <h2>🧰 Tools</h2>
+    <p class="muted">Every capability that <i>does</i> something declares what it needs before it may run. Sensitive tools need their permission, and irreversible ones ask you every single time.</p>
+
+    <div class="card">
+      <h3>Permission tiers</h3>
+      <ul id="tierLegend" class="list"></ul>
+    </div>
+
+    <div class="card">
+      <h3>Available tools</h3>
+      <p class="muted">Switch a tool off and Aevion will refuse to run it, whatever you ask.</p>
+      <ul id="toolList" class="list"></ul>
+    </div>
+
+    <div class="card">
+      <h3>Run a tool</h3>
+      <div class="row"><select id="toolPick"></select></div>
+      <div class="row"><input id="toolArgs" placeholder='arguments as JSON, e.g. {"query":"kotlin coroutines"}'><button id="toolRun" class="btn primary">Run</button></div>
+      <div class="out" id="toolOut"></div>
+    </div>
+
+    <div class="card">
+      <h3>Automation report <span class="muted small">everything Aevion may do</span></h3>
+      <p class="muted">One button, the whole picture: what Aevion is allowed to use, what you switched off, which tools always ask first, which are waiting on a permission, what actually ran and what was refused. It comes from the same tables the gate itself reads, so it cannot flatter.</p>
+      <div class="row">
+        <button id="autoReportBtn" class="btn primary">Show the automation report</button>
+        <button id="autoReportCopy" class="btn">Copy</button>
+      </div>
+      <pre class="out" id="autoReportOut"></pre>
+    </div>
+
+    <div class="card">
+      <h3>Activity log <span class="muted">(local, last 50)</span></h3>
+      <p class="muted">Every attempt is recorded here — including the ones that were refused.</p>
+      <ul id="toolLogList" class="list"></ul>
+      <div class="row"><button id="toolLogClear" class="btn">Clear log</button></div>
+    </div>
+
+    <div class="card">
+      <h3>🧠 Brain log <span class="muted small" id="brainLogState"></span></h3>
+      <p class="muted">Every time Aevion tried to answer with an AI: which brain, how long it took, whether it answered, and why it did not. This is where “the AI is not working” becomes readable — you can see that a brain was chosen, that it was never tried because its key is missing, or that it was tried and refused. It is local, capped, and it records the <b>attempt</b>, not your text: no prompt, no reply, no key — only the id, a character count and the error the provider itself returned.</p>
+      <ul id="brainLogList" class="list"></ul>
+      <div class="row">
+        <button id="brainLogClear" class="btn">Clear the brain log</button>
+        <button id="brainLogCopy" class="btn">Copy the log</button>
+      </div>
+      <div class="out" id="brainLogOut"></div>
+    </div>
+  </section>
+
   <!-- ================= FILES ================= -->
   <section class="view" id="view-files">
     <h2>📁 Files (in-browser vault)</h2>
@@ -180,6 +318,8 @@
       <p class="muted">Create a pairing password to link this device with another Aevion instance. Sync happens <b>only</b> after you explicitly export/import a sync bundle on both devices. Data stays local by default.</p>
       <div class="row"><input id="pairPass1" type="password" placeholder="Create pairing password (min 8 chars)"><button id="pairGen" class="btn">Generate key</button></div>
       <div class="row"><button id="exportSync" class="btn">Export sync bundle</button><button id="importSync" class="btn">Import sync bundle</button><input type="file" id="syncFile" accept=".aevion" hidden></div>
+      <div class="row"><label>When importing, also copy the theme, language and voice settings from that device</label><input type="checkbox" id="pairCopyTheme" checked></div>
+      <p class="muted small">Your theme is your own: the bundle carries it as one short line, and it is applied on import only if the box above is ticked. Untick it and only your data moves.</p>
       <div id="syncOut" class="out"></div>
     </div>
     <div class="card">
@@ -192,7 +332,37 @@
   <section class="view" id="view-plugins">
     <h2>🧩 Plugins</h2>
     <div class="card">
-      <p class="muted">Plugins extend Aevion with new skills. Built-in sample plugin is active. Drop plugin files into <code>js/</code> and register them with <code>Aevion.plugins.register()</code>.</p>
+      <h3>Plug in an app or a site you already use</h3>
+      <p class="muted">Everywhere Aevion has taken you — a search, a pick from its own directory, a link you opened — is listed here, because Aevion is the one that opened it. <b>🔌 Plug in</b> turns one into a plugin with the search box already turned into <code>{query}</code>, so “youtube lofi beats” works from then on, no address typing and no setup.</p>
+      <ul id="recentList" class="list"></ul>
+      <p class="muted small"><b>Apps on this device.</b> In the Android app Aevion can read the real list of installed apps and start one by name. A browser tab cannot — no browser exposes the installed-program list — so here Aevion asks you for the address instead, and says as much rather than failing silently.</p>
+      <div class="row"><button id="appScan" class="btn">📱 Look for apps on this device</button></div>
+      <div class="out" id="appOut"></div>
+      <ul id="appList" class="list"></ul>
+    </div>
+
+    <div class="card">
+      <h3>Add a plugin — no code</h3>
+      <p class="muted">Give it a trigger and a reply and it works immediately, in this chat, stored on this device. Placeholders: <code>{query}</code> is whatever you typed after the trigger, <code>{name}</code>, <code>{time}</code>, <code>{date}</code>, <code>{lang}</code>. A reply template cannot read files or reach the network — which is exactly why adding one is safe.</p>
+      <p class="muted small"><b>App &amp; site plugins.</b> Add an <b>https</b> link and the plugin becomes an action instead of an answer: it opens that address through the same confirm-tier “open a link” tool as the rest of the app, so it opens <i>nothing</i> you have not approved, every single time. Put <code>{query}</code> in the link to search with what you type (e.g. <code>https://duckduckgo.com/?q={query}</code>), and an optional second link that is tried if the first fails. What a web page <b>cannot</b> do is list the apps installed on your device or read your browser history — no browser exposes either — so nothing here pretends to: the plugin holds the address you give it.</p>
+      <div class="row">
+        <input id="pluginName" placeholder="Name, e.g. Standup">
+        <input id="pluginTriggers" placeholder="Trigger words, comma separated">
+      </div>
+      <div class="row"><input id="pluginReply" placeholder="Reply, e.g. Standup at 10:15. Yesterday: {query}"></div>
+      <div class="row"><input id="pluginTarget" placeholder="…or an https link to open, e.g. https://duckduckgo.com/?q={query}"></div>
+      <div class="row"><input id="pluginApp" placeholder="Android app package it should open instead, e.g. com.whatsapp (optional)"></div>
+      <div class="row"><label>Answer with</label><select id="pluginAI">
+        <option value="">My text — offline, instant, exactly as written</option>
+        <option value="auto" id="pluginAIAuto">Your AI — whichever brain is picked in Settings</option>
+      </select></div>
+      <div class="row"><button id="pluginSave" class="btn primary">Save plugin</button><button id="pluginTest" class="btn">Test the answer</button></div>
+      <div class="out" id="pluginOut"></div>
+    </div>
+
+    <div class="card">
+      <h3>Loaded plugins</h3>
+      <p class="muted">Simple plugins you added, and file plugins registered with <code>Aevion.plugins.register()</code>. If two plugins claim the same trigger the first one wins, so the list marks the clash instead of letting one look broken.</p>
       <ul id="pluginList" class="list"></ul>
     </div>
   </section>
@@ -202,9 +372,7 @@
     <h2>⚙️ Settings</h2>
 
     <div class="card">
-      <h3>Appearance & Personality</h3>
-      <div class="row"><label>Theme</label><select id="setTheme"></select></div>
-      <div class="row"><label>Accent color</label><input type="color" id="setAccent"></div>
+      <h3>Appearance &amp; Personality</h3>
       <div class="row"><label>Assistant name</label><input id="setName" placeholder="Aevion"></div>
       <div class="row"><label>Personality</label><select id="setPersona">
         <option value="balanced">Balanced</option>
@@ -212,30 +380,110 @@
         <option value="friendly">Friendly</option>
         <option value="formal">Formal</option>
       </select></div>
-      <div class="row"><label>Language</label><select id="setLang">
-        <option value="en">English</option><option value="hi">हिन्दी Hindi</option>
-        <option value="ta">தமிழ் Tamil</option><option value="te">తెలుగు Telugu</option>
-        <option value="es">Español</option><option value="fr">Français</option>
-        <option value="de">Deutsch</option><option value="ja">日本語</option>
-      </select></div>
-      <div class="row"><label>Voice</label><select id="setVoice"></select></div>
-      <div class="row"><label>Speak replies</label><input type="checkbox" id="setSpeak"></div>
+      <!-- options and the count are built from Aevion.languages (js/core.js) at boot -->
+      <div class="row"><label id="setLangLabel">Language</label><select id="setLang"><option value="en">English</option></select></div>
+      <p class="muted small" id="langHint"></p>
+    </div>
+
+    <div class="card">
+      <h3>Custom theme <span class="muted small" id="themeState"></span></h3>
+      <div class="row"><label>Base theme</label><select id="setTheme"></select></div>
+      <!-- one control per knob, built from Aevion.theme.KNOBS at boot -->
+      <div id="themeKnobs"></div>
+      <div class="row"><button id="themeReset" class="btn">Reset custom changes</button></div>
+      <textarea id="themeText" rows="2" placeholder="theme=cyber;accent=#37e0c8;radius=14"></textarea>
+      <div class="row">
+        <button id="themeCopy" class="btn">Show / copy this theme</button>
+        <button id="themeLoad" class="btn">Load theme text</button>
+      </div>
+      <div class="row"><label>Follow the device’s light / dark setting</label><input type="checkbox" id="setFollowDevice"></div>
+      <p class="muted small">Every change applies straight away and is kept on this device. Each knob shows the value the theme you picked would use on its own — clear it and the theme takes over again. Your own choice is remembered separately from the device’s light/dark setting, so switching that on and off always brings your theme back exactly as it was. “Show / copy this theme” gives you one short line you can keep, share or paste back later.</p>
+    </div>
+
+    <div class="card">
+      <h3>Voice &amp; hands-free</h3>
+      <p class="muted">How Aevion sounds — <b>15 voices</b> to choose between, each one a named combination of speed, pitch and which of your device's own voices to use — plus the language it listens in and whether it answers to its name. All of it lives on the <b>🎤 Voice</b> tab, one place, so there is never a second switch to keep in sync.</p>
     </div>
 
     <div class="card">
       <h3>Privacy & Permissions</h3>
       <div class="row"><label>Allow online AI (opt-in)</label><input type="checkbox" id="setOnlineAI"></div>
-      <div class="row"><label>AI provider</label><select id="setAIProvider">
-        <option value="ollama">Ollama (local, free)</option>
-        <option value="openai">OpenAI-compatible endpoint</option>
-      </select></div>
-      <div class="row"><label>Endpoint URL</label><input id="setAIUrl" placeholder="http://localhost:11434/v1/chat/completions"></div>
-      <div class="row"><label>Model</label><input id="setAIModel" placeholder="llama3.2"></div>
-      <div class="row"><label>API key (optional)</label><input id="setAIKey" type="password" placeholder="sk-… (kept on this device)"></div>
+      <div class="row"><label>Auto-switch online ↔ offline AI</label><input type="checkbox" id="setAutoAI"></div>
+      <p class="muted small">On by default: Aevion answers from the online brain while the internet is there, drops to the offline brain by itself when it is not — or when the endpoint stops answering — and switches back by itself a minute later, without a message to dismiss or a switch to flip. The header pill always says which brain is answering (LOCAL · OFFLINE AI · ONLINE AI). Turn it off and it always tries the online brain first and tells you plainly when it cannot.</p>
       <div class="row"><label>Allow online search</label><input type="checkbox" id="setOnlineSearch"></div>
       <div class="row"><label>Auto-remember facts</label><input type="checkbox" id="setMemory"></div>
+      <h4>Device access</h4>
+      <div class="row"><label>Let Aevion use this device</label><input type="checkbox" id="setDeviceAccess"></div>
+      <p class="muted small" id="deviceAccessNote"></p>
+      <div class="row">
+        <button id="deviceAccessGrant" class="btn primary">Grant all device permissions</button>
+        <button id="deviceAccessRevoke" class="btn danger">Revoke all</button>
+      </div>
+      <p class="muted small">This asks for every permission this device can actually give — in one go, one at a time, and it shows you exactly which were granted and which were refused. It is a shortcut for the rows below, not a bypass: a tool still needs its own permission, and anything irreversible (posting, deleting, opening a link, sending your data anywhere) still asks you <b>every single time</b>. Nothing here is silent, and Revoke all takes it back instantly.</p>
+
       <h4>Permission manager</h4>
       <ul id="permList" class="list"></ul>
+
+      <h4>Background</h4>
+      <div class="row"><label>Keep working while I use other apps</label><input type="checkbox" id="setBackground"></div>
+      <p class="muted small" id="backgroundNote"></p>
+    </div>
+
+    <div class="card">
+      <h3>Self-upgrade <span class="muted small" id="evolveState"></span></h3>
+      <p class="muted">With this on, Aevion can install a <b>knowledge pack</b> you approve — new words for the offline brain, a data-driven plugin, or facts waiting for your approval. It can never install code into itself: a pack that claims to carry code is refused, and the files in <code>aevion/</code> remain the only way its own code changes. Turning this on needs your explicit approval, and turning it <i>off</i> needs nothing — safety is always allowed.</p>
+      <div class="row"><label>Allow knowledge packs to be installed</label><input type="checkbox" id="setSelfUpgrade"></div>
+      <p class="muted small" id="evolveNote"></p>
+      <textarea id="upgradePack" rows="3" placeholder='{"kind":"words","lang":"kn","intent":"timer","words":["ಟೈಮರ್ ಹಾಕು"]}'></textarea>
+      <div class="row">
+        <button id="upgradeApply" class="btn primary">Review &amp; install this pack</button>
+        <button id="upgradePlan" class="btn">What can it install?</button>
+      </div>
+      <pre class="out" id="upgradeOut"></pre>
+      <ul id="upgradeLog" class="list"></ul>
+    </div>
+
+    <div class="card">
+      <h3>App updates <span class="muted small" id="updateState"></span></h3>
+      <p class="muted">This is how Aevion stays current — the same way any app on your phone does: it checks whether a newer <b>signed</b> build exists, and, if it does, the user approves the install. When that happens the existing app is replaced <i>in place</i> and your chats, memory, settings, keys and everything else stay put — nothing is wiped.</p>
+      <div class="row"><button id="updateCheck" class="btn">Check for a newer build</button></div>
+      <div class="out" id="updateOut"></div>
+      <p class="muted small" id="updateNote"></p>
+      <p class="muted small">On a web tab there is no install — a browser tab cannot replace an installed app, so the tab only checks and reports what it finds. On the Aevion Android app the app downloads the signed APK and asks the system to replace the old one (after you approve the system dialog). Every install still runs through the same self-upgrade consent gate and the same per-install confirmation — there is no silent update, ever.</p>
+      <p class="muted small" id="updateNote2">A newer build can only be installed if it is signed by the same key that signed the version already on the device. That is what keeps a hijacked download URL from sneaking up on you — the app verifies the downloaded file against the published checksum before it even offers the install.</p>
+    </div>
+
+    <div class="card">
+      <h3>AI provider</h3>
+      <p class="muted" id="aiHint"></p>
+      <div class="row"><label>Provider</label><select id="setAIProvider"></select></div>
+      <div class="row" id="aiUrlRow"><label>Endpoint URL</label><input id="setAIUrl" placeholder="https://…/v1/chat/completions"></div>
+      <div class="row" id="aiModelRow"><label>Model</label><input id="setAIModel" placeholder="model name"></div>
+      <div class="row" id="aiKeyRow"><label>API key</label><input id="setAIKey" type="password" placeholder="stored on this device only" autocomplete="off"></div>
+      <!-- Free-tier providers only: the same “get a free key” flow the chat card
+           has, so the key can be added from Settings too — built from the
+           registry's `free`/`docs`, never a hardcoded list here. -->
+      <div class="row" id="aiFreeRow" hidden><button id="aiGetKey" class="btn">🔑 Get a free key for this provider</button></div>
+      <div class="row"><label>Fall back if it fails</label><input type="checkbox" id="setAIFallback"></div>
+      <div class="row"><button id="aiTest" class="btn">Test connection</button><button id="aiKeyClear" class="btn danger">Forget stored key</button></div>
+      <div class="row"><button id="aiBest" class="btn primary">⚡ Use the best brain this device has</button><button id="aiSetup" class="btn">🧠 Open the one-tap setup</button></div>
+      <p class="muted small">That button asks every brain this device can reach — a server on your own machine, the in-browser model, a hosted key you already saved — and switches to the best one that answers. It never overrules a choice that already works, and it never sends a prompt to find out — only “are you there?”.</p>
+      <div class="out" id="aiStatus"></div>
+      <p class="muted" id="secretsNote"></p>
+      <p class="muted">Each provider keeps its own endpoint, model and key, so switching back and forth never loses your setup. Fallback only ever happens within the same trust class: a failing cloud provider can drop to the on-device model, but your prompt is never silently rerouted to a <i>different</i> company.</p>
+    </div>
+
+    <div class="card">
+      <h3>More than one brain <span class="muted small" id="multiState"></span></h3>
+      <p class="muted">Every provider above keeps its <b>own</b> key, so you can add as many as you like — nine of them are free to start. Tick the ones to use together and pick what “together” means. Nothing here is a claim that models merge into something smarter; each strategy does something specific and honest.</p>
+      <div class="row"><label>When several are ticked</label><select id="setBrainStrategy">
+        <option value="first">Use one brain — the fastest one that answers</option>
+        <option value="compare">Ask all of them, show every answer side by side — you see where they disagree</option>
+        <option value="critique">One answers, the next reviews and corrects it — a second reader catches mistakes</option>
+      </select></div>
+      <ul class="list" id="brainSetList"></ul>
+      <div class="out" id="multiOut"></div>
+      <p class="muted small">Each leg of a multi-brain message is a separate call and shows up in Tools → 🧠 Brain log with its own latency, so you can see exactly what was asked and what came back. A brain that fails is skipped and named, never silently swapped for another company.</p>
     </div>
 
     <div class="card">
@@ -251,6 +499,8 @@
     <div class="card">
       <h3>Security</h3>
       <div class="row"><label>PIN lock on start</label><input type="checkbox" id="setPinOn"></div>
+      <div class="row"><label>Require that PIN outside the Aevion app too</label><input type="checkbox" id="setPinBrowser"></div>
+      <p class="muted small" id="pinBrowserNote"></p>
       <div class="row"><input id="setPin1" type="password" inputmode="numeric" placeholder="New PIN (4-8 digits)"><button id="setPinSave" class="btn">Save PIN</button></div>
       <div class="row"><button id="exportData" class="btn">Export all my data</button><button id="wipeBtn" class="btn danger">Factory reset</button></div>
     </div>
@@ -261,18 +511,109 @@
     </div>
   </section>
 
+  <!-- ================= VOICE ================= -->
+  <section class="view" id="view-voice">
+    <h2>🎤 Voice</h2>
+    <p class="muted">Aevion can talk and listen. Both stay off by default, so the microphone is never opened without your say-so.</p>
+
+    <div class="card">
+      <h3>Hands-free by name <button type="button" class="pill" id="inputState" title="Hands-free state — tap to turn it on or off">off</button></h3>
+      <div class="row"><label>Nickname</label><input id="setNickname" placeholder="Aevion" maxlength="24" autocomplete="off" title="What Aevion answers to"></div>
+      <p class="muted small" id="nicknameHint">Whatever you type here is what Aevion answers to — the tab title and the HUD show it, and it is what the mic listens for: say «Hey <b id="nickExample">Aevion</b> …» and it starts. Same setting as “Assistant name” in Settings, yours to change any time.</p>
+      <div class="row">
+        <label class="switch row">
+          <span>Answer when I say <b id="wakeName">Aevion</b></span>
+          <input type="checkbox" id="setWakeOn">
+        </label>
+      </div>
+      <div class="row">
+        <button id="voiceToggle" class="btn primary">Start</button>
+        <button id="voiceStop" class="btn" disabled>Stop</button>
+      </div>
+      <p class="muted small" id="wakeHelp">Say its name and ask in one breath — «Hey Aevion, what is 2+2», «Hayy Aevion tell me a joke», «Yo Aevion open youtube» — and the request runs straight away. Say just the name (or a greeting plus the name) and it answers with a cue, then takes your next sentence as the request. After a reply you can keep talking without repeating the name, and talking over it stops it mid-sentence. Nicknames work too: type one in the box above and it answers to that one instead.</p>
+      <p class="muted small" id="wakeWarn" hidden></p>
+      <p class="muted small">This mode keeps the microphone open, so it is <b>off by default</b>: it stops itself after a few idle minutes and pauses whenever the page is hidden. That is a battery and privacy decision, not a limitation.</p>
+    </div>
+
+    <div class="card">
+      <h3>Text-to-speech <span class="muted small" id="voiceState"></span></h3>
+      <!-- the 15 voices are built from Aevion.voices.PRESETS at boot -->
+      <div class="row"><label>Voice</label><select id="setVoiceStyle"></select></div>
+      <p class="muted small" id="voiceHint"></p>
+      <div class="row"><button id="voicePreview" class="btn primary">▶ Hear this voice</button></div>
+      <div class="row"><label>Speak replies</label><input type="checkbox" id="setTtsOn"></div>
+      <!-- step 0.05 so every preset's own value is exactly representable -->
+      <div class="row"><label>Speech rate</label><input type="range" id="setRate" min="0.5" max="2" step="0.05" value="1"></div>
+      <div class="row"><label>Pitch</label><input type="range" id="setPitch" min="0.5" max="2" step="0.05" value="1"></div>
+      <div class="row"><label>Engine voice (override)</label><select id="setVoice"><option value="">(system default)</option></select></div>
+      <p class="muted small">A voice here is a named combination of speed, pitch and — where your device offers a choice — which of its own voices to use. Your device decides the timbre; Aevion only ever asks it for a different speed or pitch. Moving the sliders by hand keeps the voice name and marks it as adjusted, so nothing is ever silently overridden.</p>
+    </div>
+
+    <div class="card">
+      <h3>Speech input</h3>
+      <div class="row"><label id="setSpeechLangLabel">Speech language</label><select id="setSpeechLang"><option value="">Use the app language</option></select></div>
+      <p class="muted small" id="speechLangHint"></p>
+      <div class="row"><label>Interim feedback</label><input type="checkbox" id="setInterim"></div>
+    </div>
+
+    <div class="card">
+      <h3>Live speak &amp; translate</h3>
+      <p class="muted small">Speak in one language and Aevion says it back in another, out loud, phrase by phrase — for a conversation across a language you do not speak. Listening uses your device's speech engine, so the microphone stays open only while this is on; translation uses your browser's online service, so “Allow online search” has to be on in Settings.</p>
+      <div class="row">
+        <label>I speak</label><select id="liveSrc"></select>
+        <label>say it in</label><select id="liveDst"></select>
+      </div>
+      <div class="row"><button id="liveToggle" class="btn primary">Start live translation</button></div>
+      <div class="out" id="liveOut"></div>
+    </div>
+
+    <div class="card">
+      <h3>Teach a command <span class="muted small" id="teachCount"></span></h3>
+      <p class="muted small">The offline brain already answers in every language listed in Settings, using the words people actually say. If a word you use is missing, add it here — it is stored on this device and matched from the next message on. This is also how a language with no table yet starts working: teach it “time”, “joke”, “note”… one word at a time.</p>
+      <div class="row">
+        <label>Language</label><select id="teachLang"></select>
+        <label>Command</label><select id="teachIntent"></select>
+      </div>
+      <div class="row"><input id="teachWords" placeholder="Words or phrases, comma separated"><button id="teachSave" class="btn primary">Teach</button></div>
+      <pre class="out" id="teachOut"></pre>
+    </div>
+  </section>
+
 </main>
+
+<div id="confirmModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-title" id="confirmTitle">Confirm</div>
+    <div class="modal-body muted" id="confirmBody"></div>
+    <div class="row">
+      <button class="btn primary" id="confirmYes">Approve once</button>
+      <button class="btn" id="confirmNo">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast"></div>
 
-<script src="js/core.js?v=050"></script>
-<script src="js/brain.js?v=050"></script>
-<script src="js/skills.js?v=050"></script>
-<script src="js/voice.js?v=050"></script>
-<script src="js/online.js?v=050"></script>
-<script src="js/webllm.js?v=050"></script>
-<script src="js/markdown.js?v=050"></script>
-<script src="js/app.js?v=050"></script>
-<script src="js/plugins/hello-world.js?v=050"></script>
+<script src="js/core.js?v=066"></script>
+<script src="js/theme.js?v=066"></script>
+<script src="js/nlu.js?v=066"></script>
+<script src="js/brain.js?v=066"></script>
+<script src="js/skills.js?v=066"></script>
+<script src="js/memory.js?v=066"></script>
+<script src="js/tools.js?v=066"></script>
+<script src="js/attach.js?v=066"></script>
+<script src="js/evolve.js?v=066"></script>
+<script src="js/plugins.js?v=066"></script>
+<script src="js/voices.js?v=066"></script>
+<script src="js/voice.js?v=066"></script>
+<script src="js/wake.js?v=066"></script>
+<script src="js/providers.js?v=066"></script>
+<script src="js/online.js?v=066"></script>  <script src="js/webllm.js?v=066"></script>
+  <script src="js/setup.js?v=066"></script>
+<script src="js/apps.js?v=066"></script>
+<script src="js/markdown.js?v=066"></script>
+<script src="js/app.js?v=066"></script>
+<script src="js/update.js?v=066"></script>
+<script src="js/plugins/hello-world.js?v=066"></script>
 </body>
 </html>

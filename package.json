@@ -1,0 +1,15 @@
+{
+  "name": "aevion",
+  "version": "0.6.6",
+  "private": true,
+  "description": "Aevion — private, local-first AI assistant. Zero runtime dependencies; Node is only used for tests and static checks.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node tools/check.mjs",
+    "verify": "npm run check && npm test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

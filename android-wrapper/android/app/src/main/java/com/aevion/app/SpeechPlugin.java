@@ -50,6 +50,8 @@ public class SpeechPlugin extends Plugin {
     private boolean listening = false;
     private boolean ttsReady = false;
     private String pendingSpeakText;
+    private float pendingRate = 1f;
+    private float pendingPitch = 1f;
 
     /* ================= microphone ================= */
 
@@ -240,6 +242,10 @@ public class SpeechPlugin extends Plugin {
     public void speak(PluginCall call) {
         final String text = call.getString("text", "");
         final String language = call.getString("language", "en-US");
+        // Aevion's voice presets are speed and pitch, so the engine has to
+        // hear about them — otherwise every preset would sound identical here.
+        final float rate = (float) clamp(call.getDouble("rate", 1.0), 0.5, 2.0);
+        final float pitch = (float) clamp(call.getDouble("pitch", 1.0), 0.5, 2.0);
         if (text == null || text.trim().isEmpty()) {
             call.resolve();
             return;
@@ -248,13 +254,19 @@ public class SpeechPlugin extends Plugin {
             if (tts == null) {
                 // first call: engine boots asynchronously, speak once it is ready
                 pendingSpeakText = text;
+                pendingRate = rate;
+                pendingPitch = pitch;
                 ensureTts(language);
                 call.resolve();
                 return;
             }
-            speakNow(text, language);
+            speakNow(text, language, rate, pitch);
             call.resolve();
         });
+    }
+
+    private static double clamp(double v, double lo, double hi) {
+        return Math.min(hi, Math.max(lo, v));
     }
 
     @PluginMethod
@@ -299,13 +311,15 @@ public class SpeechPlugin extends Plugin {
             });
             if (pendingSpeakText != null) {
                 String queued = pendingSpeakText;
+                float queuedRate = pendingRate;
+                float queuedPitch = pendingPitch;
                 pendingSpeakText = null;
-                speakNow(queued, language);
+                speakNow(queued, language, queuedRate, queuedPitch);
             }
         });
     }
 
-    private void speakNow(String text, String language) {
+    private void speakNow(String text, String language, float rate, float pitch) {
         if (tts == null) return;
         try {
             Locale locale = Locale.forLanguageTag(language.replace('_', '-'));
@@ -313,6 +327,10 @@ public class SpeechPlugin extends Plugin {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 tts.setLanguage(Locale.US);
             }
+            // Speed and pitch are per-utterance settings on Android too, and
+            // they are what every voice preset actually changes.
+            tts.setSpeechRate(rate);
+            tts.setPitch(pitch);
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "aevion");
         } catch (Exception e) {
             JSObject data = new JSObject();
