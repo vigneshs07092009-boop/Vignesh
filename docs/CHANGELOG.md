@@ -1,5 +1,22 @@
 # Aevion — Technical Changelog
 
+## 0.6.8 — the way back in, a CI build that finally works, and a server that is simply there
+
+### Added: "Import a backup" — the twin that was missing
+- Settings has had **Export all my data** from day one, but no way back in: the restore button simply did not exist, so a factory reset or a machine move was a one-way door. Settings now carries **Import a backup** beside it.
+- The restore is deliberately conservative, and the rules cut both ways: the file must be `{"app":"aevion", data:{...}}` — the exact shape export writes; a backup **carrying `secrets` is refused** (dumpSafe strips keys on export, so one that has them was edited by hand — that is tampering, not restoring); a backup older than 0.6.0 is refused rather than half-understood; **settings are merged key-by-key**, so restoring can never blank a device that already knows more than the backup did; and chats, memory, notes and plugins come back wholesale. API keys are re-entered by hand afterwards — by design, because they never travel in a backup. `tools/check.mjs` fails the build if any gate (shape check, secrets refusal, version floor, merge-not-blank) disappears.
+
+### Fixed: the cloud build failed on every push — the workflow clobbered its own environment
+- The **Sync Capacitor native project** step set `ANDROID_HOME: ${{ env.ANDROID_HOME }}` and the same for `JAVA_HOME`, but those are unset at *workflow* level — so the step replaced the runner's real values with **empty strings** and `npx cap sync android` died in about a second, failing every run since the workflow was introduced. Verified from the run history: every single "Build APK" run has `failure` at exactly that step, while the same command succeeds in seconds on this machine.
+- The step now runs `node node_modules/@capacitor/cli/bin/capacitor sync android` — the CLI that `npm install` already put in `node_modules`, with **no environment overrides at all**. `npx` resolution fragility is gone with it. `setup-java` also moves v4 → v5 (v4 is deprecated).
+
+### Added: the local server starts at login — `tools/autostart-server.ps1`
+- The desktop launcher already starts the server if it is not running, but only when clicked. Now a per-user **Run-key entry** starts the server hidden at login, so the installed app just opens, every time, with nothing else running. `-Remove` undoes it.
+- Not a scheduled task: `schtasks /Create /SC ONLOGON` returns **Access is denied** for the current user on this machine even without admin flags — the Run key is the designed admin-free per-user hook, pointed at the same silent `wscript` shim the desktop launcher uses. `dev-server.mjs` exits cleanly when a copy is already listening, so the login start and the launcher can never fight.
+
+### Changed
+- Version 0.6.8 everywhere (`core.js`, `package.json`, `sw.js` cache, all 23 `?v=` tags, the CI workflow); `tools/check.mjs` still fails the build when any of them disagree.
+
 ## 0.6.7 — installable on the desktop, and an upgrade you can actually receive
 
 ### Fixed: the app could not be installed from a browser at all

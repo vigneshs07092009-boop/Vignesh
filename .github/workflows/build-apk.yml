@@ -25,7 +25,7 @@ jobs:
       # 2. ubuntu-latest already ships Node 20, JDK 17 + the Android SDK.
       #    We make the env vars explicit to match your local script shape.
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -61,13 +61,15 @@ jobs:
           cp -r aevion/. android-wrapper/www/
           rm -f android-wrapper/www/serve.ps1 android-wrapper/www/serve.bat
 
-      # 5. Sync the Capacitor native project with the web app
+      # 5. Sync the Capacitor native project with the web app.
+      #    Runs through the LOCAL cli (node node_modules/@capacitor/cli/bin/capacitor)
+      #    and keeps the runner's ANDROID_HOME/JAVA_HOME untouched: an earlier
+      #    version overrode both with empty strings via ${{ env.ANDROID_HOME }}
+      #    (unset at workflow level), and npx cap then failed in about a second
+      #    on every push. npm install already put the cli in node_modules.
       - name: Sync Capacitor native project
         working-directory: ./android-wrapper
-        run: npx cap sync android
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          JAVA_HOME: ${{ env.JAVA_HOME }}
+        run: node node_modules/@capacitor/cli/bin/capacitor sync android
 
       # 6. Build the APK using the repo's Gradle wrapper — never the runner's global Gradle
       - name: Build Aevion debug APK
@@ -113,8 +115,8 @@ jobs:
           unzip -p "$APK" AndroidManifest.xml | grep -q "android.speech.RecognitionService" || { echo "speech <queries> entry missing from manifest"; exit 1; }
           echo "PASS: manifest carries RECORD_AUDIO + speech queries"
 
-          # web assets are the current version (ver bump in index.html = 067)
-          unzip -p "$APK" assets/public/index.html | grep -q '?v=067' || { echo "index.html not at v=067 - likely stale"; exit 1; }
+          # web assets are the current version (ver bump in index.html = 068)
+          unzip -p "$APK" assets/public/index.html | grep -q '?v=068' || { echo "index.html not at v=068 - likely stale"; exit 1; }
           echo "PASS: web assets are the current version"
 
           # the event-payload fix is really in packaged core.js

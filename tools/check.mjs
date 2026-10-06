@@ -184,6 +184,19 @@ check('APK verifier checks the current version', () => {
   return ps.includes("$vShort = $webVersion -replace") ? null : 'verify-apk.ps1 no longer derives the cache-busting tag from the bundled version';
 });
 
+check('the backup restore keeps its safety chain', () => {
+  const app = read('aevion/js/app.js');
+  const html = read('aevion/index.html');
+  const misses = [];
+  if (!html.includes('id="importData"')) misses.push('Import a backup button');
+  if (!html.includes('id="backupFile"')) misses.push('backup file input');
+  if (!app.includes("parsed.app !== 'aevion'")) misses.push('backup shape check');
+  if (!app.includes("hasOwnProperty.call(parsed.data, 'secrets')")) misses.push('secrets refusal');
+  if (!app.includes('too old to restore safely')) misses.push('version floor');
+  if (!app.includes("Aevion.store.get('settings', {})")) misses.push('merge-dont-blank settings');
+  return misses.length ? `missing: ${misses.join(', ')}` : null;
+});
+
 /* ---------- 8. Android manifest keeps what voice needs ---------- */
 check('AndroidManifest keeps voice requirements', () => {
   const mf = read('android-wrapper/android/app/src/main/AndroidManifest.xml');

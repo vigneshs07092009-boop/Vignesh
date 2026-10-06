@@ -7,8 +7,8 @@
 <title>Aevion — Private AI Assistant</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/themes.css?v=067">
-<link rel="stylesheet" href="css/style.css?v=067">
+<link rel="stylesheet" href="css/themes.css?v=068">
+<link rel="stylesheet" href="css/style.css?v=068">
 </head>
 <body>
 <div id="boot" class="boot">
@@ -502,7 +502,9 @@
       <div class="row"><label>Require that PIN outside the Aevion app too</label><input type="checkbox" id="setPinBrowser"></div>
       <p class="muted small" id="pinBrowserNote"></p>
       <div class="row"><input id="setPin1" type="password" inputmode="numeric" placeholder="New PIN (4-8 digits)"><button id="setPinSave" class="btn">Save PIN</button></div>
-      <div class="row"><button id="exportData" class="btn">Export all my data</button><button id="wipeBtn" class="btn danger">Factory reset</button></div>
+      <div class="row"><button id="exportData" class="btn">Export all my data</button><button id="importData" class="btn">Import a backup</button><button id="wipeBtn" class="btn danger">Factory reset</button></div>
+      <input type="file" id="backupFile" accept=".json,application/json" hidden>
+      <p class="muted small" id="restoreOut">A backup restores your settings, brain, chats and notes. Your API keys are not inside it (by design) — re-enter the key after restoring.</p>
     </div>
 
     <div class="card">
@@ -594,26 +596,26 @@
 
 <div id="toast"></div>
 
-<script src="js/core.js?v=067"></script>
-<script src="js/theme.js?v=067"></script>
-<script src="js/nlu.js?v=067"></script>
-<script src="js/brain.js?v=067"></script>
-<script src="js/skills.js?v=067"></script>
-<script src="js/memory.js?v=067"></script>
-<script src="js/tools.js?v=067"></script>
-<script src="js/attach.js?v=067"></script>
-<script src="js/evolve.js?v=067"></script>
-<script src="js/plugins.js?v=067"></script>
-<script src="js/voices.js?v=067"></script>
-<script src="js/voice.js?v=067"></script>
-<script src="js/wake.js?v=067"></script>
-<script src="js/providers.js?v=067"></script>
-<script src="js/online.js?v=067"></script>  <script src="js/webllm.js?v=067"></script>
-  <script src="js/setup.js?v=067"></script>
-<script src="js/apps.js?v=067"></script>
-<script src="js/markdown.js?v=067"></script>
-<script src="js/app.js?v=067"></script>
-<script src="js/update.js?v=067"></script>
-<script src="js/plugins/hello-world.js?v=067"></script>
+<script src="js/core.js?v=068"></script>
+<script src="js/theme.js?v=068"></script>
+<script src="js/nlu.js?v=068"></script>
+<script src="js/brain.js?v=068"></script>
+<script src="js/skills.js?v=068"></script>
+<script src="js/memory.js?v=068"></script>
+<script src="js/tools.js?v=068"></script>
+<script src="js/attach.js?v=068"></script>
+<script src="js/evolve.js?v=068"></script>
+<script src="js/plugins.js?v=068"></script>
+<script src="js/voices.js?v=068"></script>
+<script src="js/voice.js?v=068"></script>
+<script src="js/wake.js?v=068"></script>
+<script src="js/providers.js?v=068"></script>
+<script src="js/online.js?v=068"></script>  <script src="js/webllm.js?v=068"></script>
+  <script src="js/setup.js?v=068"></script>
+<script src="js/apps.js?v=068"></script>
+<script src="js/markdown.js?v=068"></script>
+<script src="js/app.js?v=068"></script>
+<script src="js/update.js?v=068"></script>
+<script src="js/plugins/hello-world.js?v=068"></script>
 </body>
 </html>

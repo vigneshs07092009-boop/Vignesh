@@ -2627,6 +2627,57 @@
     a.download = 'aevion-backup-' + Date.now() + '.json';
     a.click();
   };
+
+  /* Restore. The twin of exportData: export existed from the start, the way
+     back in never did, which is a one-way door for someone who just factory
+     reset or moved machines. Same contract both ways: JSON, app==='aevion',
+     dumpSafe() shape — and the merge is deliberately conservative.
+       * settings are merged KEY BY KEY: a key absent from the backup keeps
+         its current value, so a restore can never blank a device that is
+         already configured for more than the backup knew.
+       * everything else (chats, memory, notes, tasks, plugins) is restored
+         wholesale, because those are collections, not configuration.
+       * secrets are refused in both directions (dumpSafe strips them on
+         export; an import carrying them is tampering) — the notice says so.
+       * a `v` older than 0.6.0 is refused rather than half-understood.
+     The page reloads afterwards so every view re-renders from real state. */
+  $('#importData').onclick = () => $('#backupFile').click();
+  $('#backupFile').onchange = e => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const out = $('#restoreOut');
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const parsed = JSON.parse(r.result);
+        if (!parsed || parsed.app !== 'aevion' || typeof parsed.data !== 'object' || !parsed.data) {
+          throw new Error('that file is not an Aevion backup (expected {"app":"aevion",...})');
+        }
+        if (Object.prototype.hasOwnProperty.call(parsed.data, 'secrets')) {
+          throw new Error('the backup carries API keys, which backups never do — it may have been edited');
+        }
+        const bv = String(parsed.v || '0');
+        const [bmaj, bmin] = bv.split('.').map(Number);
+        if (!(bmaj > 0 || bmin >= 6)) throw new Error('backup from ' + bv + ' is too old to restore safely');
+        const d = parsed.data;
+        if (d.settings && typeof d.settings === 'object') {
+          const cur = Aevion.store.get('settings', {});
+          Aevion.store.set('settings', Object.assign({}, cur, d.settings));
+        }
+        for (const [k, v] of Object.entries(d)) {
+          if (k === 'settings') continue;
+          Aevion.store.set(k, v);
+        }
+        const n = Object.keys(d).length;
+        out.textContent = '✅ Restored ' + n + ' section' + (n === 1 ? '' : 's') + ' from the ' + bv + ' backup. Reloading…';
+        setTimeout(() => location.reload(), 1200);
+      } catch (err) {
+        out.textContent = '❌ Restore failed: ' + err.message;
+      }
+    };
+    r.readAsText(f);
+  };
   $('#wipeBtn').onclick = () => {
     if (!confirm('Factory reset: delete ALL Aevion data on this device? This cannot be undone.')) return;
     if (!confirm('Really sure? Export a backup first if you need one.')) return;
