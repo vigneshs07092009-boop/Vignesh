@@ -207,6 +207,14 @@ check('CI runs a Node the Capacitor CLI can actually run', () => {
     : `CI runs Node ${ciMajor} but @capacitor/cli needs ${want} — the sync step will fail`;
 });
 
+check('CI makes the Gradle wrapper executable before running it', () => {
+  // gradlew is a shell script. This repo is authored on Windows, where git can
+  // record it in the index as 100644; the runner then fails with "Permission
+  // denied" about a second into the build, with nothing useful in the log.
+  const wf = read('.github/workflows/build-apk.yml');
+  return /chmod \+x gradlew/.test(wf) ? null : 'the APK build step no longer chmods gradlew';
+});
+
 check('the backup restore keeps its safety chain', () => {
   const app = read('aevion/js/app.js');
   const html = read('aevion/index.html');

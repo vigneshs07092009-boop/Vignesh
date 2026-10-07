@@ -93,14 +93,21 @@ jobs:
         run: node node_modules/@capacitor/cli/bin/capacitor sync android
 
       # 6. Build the APK using the repo's Gradle wrapper — never the runner's global Gradle
+      #    `gradlew` is a shell script, so it has to be executable. This repo was
+      #    authored on Windows, where git commonly records it in the index as
+      #    100644; a Linux runner then answers "Permission denied" and the step
+      #    dies in about a second. The index bit is fixed too (mode 100755) —
+      #    this chmod is the belt to that braces, because an exec bit is easy to
+      #    lose again and impossible to notice on Windows.
       - name: Build Aevion debug APK
         working-directory: ./android-wrapper
         run: |
           cd android
+          chmod +x gradlew
           ./gradlew assembleDebug \
             --no-daemon \
             --console=plain \
-            --quiet \
+            --stacktrace \
             -Dorg.gradle.jvmargs="-Xmx2g"
 
       # 7. Upload the APK as a downloadable artifact (Gatehouse keeps it to you)
