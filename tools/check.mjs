@@ -207,6 +207,24 @@ check('CI runs a Node the Capacitor CLI can actually run', () => {
     : `CI runs Node ${ciMajor} but @capacitor/cli needs ${want} — the sync step will fail`;
 });
 
+check('CI runs a Java the Capacitor modules can compile with', () => {
+  // The Capacitor 8 modules are generated with sourceCompatibility
+  // JavaVersion.VERSION_21. A runner on JDK 17 fails with
+  // "error: invalid source release: 21" while compiling :capacitor-android,
+  // which is exactly how the third CI failure was found.
+  const gradle = read('android-wrapper/android/app/capacitor.build.gradle');
+  const m = gradle.match(/sourceCompatibility\s+JavaVersion\.VERSION_(\d+)/);
+  if (!m) return 'capacitor.build.gradle no longer names a Java source level';
+  const needed = Number(m[1]);
+  const wf = read('.github/workflows/build-apk.yml');
+  const jm = wf.match(/java-version:\s*'(\d+)/);
+  if (!jm) return 'workflow no longer pins a Java version';
+  const ciJava = Number(jm[1]);
+  return ciJava >= needed
+    ? null
+    : `CI installs JDK ${ciJava} but the Capacitor modules compile with Java ${needed} — the APK build will fail`;
+});
+
 check('CI makes the Gradle wrapper executable before running it', () => {
   // gradlew is a shell script. This repo is authored on Windows, where git can
   // record it in the index as 100644; the runner then fails with "Permission

@@ -22,13 +22,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. ubuntu-latest already ships a JDK + the Android SDK; we pin them
-      #    explicitly so a runner image change cannot alter the toolchain.
+      # 2. Java 21, not 17: the Capacitor 8 modules compile with
+      #    `sourceCompatibility JavaVersion.VERSION_21` (see
+      #    android-wrapper/android/app/capacitor.build.gradle and the
+      #    capacitor-cordova-android-plugins module), and JDK 17 answers
+      #    "error: invalid source release: 21" while compiling
+      #    :capacitor-android. This machine never saw it because its JDK is 21.
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: gradle
 
       #    Node 22 is not optional: android-wrapper/package-lock.json pins
