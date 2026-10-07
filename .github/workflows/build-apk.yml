@@ -69,20 +69,26 @@ jobs:
             console.log("PASS: the runner satisfies the Capacitor CLI engine requirement");
           '
 
-          # Publish the toolchain to the job summary. The run log needs admin
-          # rights to fetch through the API, but the summary does not — so a
-          # failure can be diagnosed from anywhere instead of guessing at an
-          # empty "exit code 1".
+          # Publish the toolchain as an annotation, not just a step summary: a run's log needs admin
+          # rights to fetch through the API, but its annotations are public on
+          # a public repo. So the toolchain is reported as an annotation too,
+          # and a failure can be diagnosed from anywhere.
+          TOOLCHAIN="node=$(node --version) java=$(java -version 2>&1 | head -1) ANDROID_HOME=$ANDROID_HOME"
+          PLATFORMS="platforms: $(ls "$ANDROID_HOME/platforms" 2>/dev/null | tr '\n' ' ')"
+          BUILDTOOLS="build-tools: $(ls "$ANDROID_HOME/build-tools" 2>/dev/null | tr '\n' ' ')"
+          echo "$TOOLCHAIN"
+          echo "$PLATFORMS"
+          echo "$BUILDTOOLS"
+          echo "::notice title=Runner toolchain::$TOOLCHAIN | $PLATFORMS | $BUILDTOOLS"
+
           if [ -n "$GITHUB_STEP_SUMMARY" ]; then
             {
               echo "### Runner toolchain"
               echo ''
               echo '```'
-              echo "node:         $(node --version)"
-              echo "java:         $(java -version 2>&1 | head -1)"
-              echo "ANDROID_HOME: $ANDROID_HOME"
-              echo "platforms:    $(ls "$ANDROID_HOME/platforms" 2>/dev/null | tr '\n' ' ')"
-              echo "build-tools:  $(ls "$ANDROID_HOME/build-tools" 2>/dev/null | tr '\n' ' ')"
+              echo "$TOOLCHAIN"
+              echo "$PLATFORMS"
+              echo "$BUILDTOOLS"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -123,10 +129,10 @@ jobs:
           cd android
           chmod +x gradlew
 
-          # A failing Gradle build prints its reason to a log nobody can read
-          # (the run log needs admin rights through the API). Tee it, and put
-          # the tail in the job summary, which is readable — so the next CI
-          # failure arrives with its own explanation.
+          # A failing Gradle build prints its reason into a log nobody can read
+          # through the API. Tee it, and turn the tail into an error annotation
+          # and a step summary — so the next CI failure arrives with its own
+          # explanation instead of an empty "exit code 1".
           set +e
           set -o pipefail
           ./gradlew assembleDebug \
@@ -138,6 +144,14 @@ jobs:
           set +o pipefail
 
           if [ "$status" -ne 0 ]; then
+            # Workflow-command escaping: % -> %25, CR -> %0D, LF -> %0A.
+            # The annotation then carries the real Gradle error, wrapped, and
+            # readable through the public check-run annotations API.
+            TAIL=$(tail -n 40 gradle-build.log \
+              | sed -e 's/%/%25/g' -e 's/\r//g' \
+              | awk '{ printf "%s%%0A", $0 }')
+            echo "::error title=Gradle build failed (exit $status)::${TAIL:0:3500}"
+
             if [ -n "$GITHUB_STEP_SUMMARY" ]; then
               {
                 echo "### Gradle failed (exit $status)"
