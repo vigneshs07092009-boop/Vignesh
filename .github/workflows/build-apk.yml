@@ -190,35 +190,67 @@ jobs:
         working-directory: ./android-wrapper
         run: |
           APK=android/app/build/outputs/apk/debug/app-debug.apk
-          echo "checking the debug APK with the same eyes the release build uses"
           echo "=== verifying the freshly built APK ==="
           test -f "$APK" || { echo "APK not found at $APK"; exit 1; }
           echo "APK size: $(du -h "$APK" | cut -f1)"
+          echo "dex files: $(unzip -Z1 "$APK" | grep -cE '^classes[0-9]*\.dex$')"
 
-          # native plugin classes live in classes.dex — scan them
-          unzip -p "$APK" classes.dex > /tmp/classes_dex.bin
-          grep -q "SpeechPlugin" /tmp/classes_dex.bin   || { echo "SpeechPlugin not found in classes.dex"; exit 1; }
-          grep -q "micPermission"     /tmp/classes_dex.bin   || { echo "micPermission callback not found in classes.dex"; exit 1; }
-          echo "PASS: native plugin is inside the APK"
+          # Every check records a failure instead of exiting on the spot, so a
+          # broken APK reports ALL of what is wrong in one annotation.
+          FAILED=""
+          bad() { FAILED="$FAILED$1, "; echo "  FAIL  $1"; }
+          good() { echo "  PASS  $1"; }
 
-          # manifest carries the permissions + the speech <queries> entry
-          unzip -p "$APK" AndroidManifest.xml | grep -q "RECORD_AUDIO" || { echo "RECORD_AUDIO missing from manifest"; exit 1; }
-          unzip -p "$APK" AndroidManifest.xml | grep -q "android.speech.RecognitionService" || { echo "speech <queries> entry missing from manifest"; exit 1; }
-          echo "PASS: manifest carries RECORD_AUDIO + speech queries"
-
-          # web assets are the current version (ver bump in index.html = 068)
-          unzip -p "$APK" assets/public/index.html | grep -q '?v=068' || { echo "index.html not at v=068 - likely stale"; exit 1; }
-          echo "PASS: web assets are the current version"
-
-          # the event-payload fix is really in packaged core.js
-          unzip -p "$APK" assets/public/js/core.js | grep -q 'e && e.detail' || { echo "event-payload fix missing from core.js"; exit 1; }
-          echo "PASS: event-payload fix is in core.js"
-
-          # every feature module really made it into the packaged web app
-          for f in js/providers.js js/tools.js js/memory.js; do
-            unzip -p "$APK" "assets/public/$f" | grep -q 'Aevion' || { echo "$f missing from the APK"; exit 1; }
+          # --- native plugin classes.
+          #     Search for these symbols across EVERY dex file, not just
+          #     classes.dex: a debug build already ships six of them, and
+          #     SpeechPlugin lives in the LAST one. Scanning only the first dex
+          #     reported a perfectly healthy APK as broken on every run.
+          rm -f /tmp/alldex.bin
+          for d in $(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
+            unzip -p "$APK" "$d" >> /tmp/alldex.bin
           done
-          echo "PASS: providers, tools and memory modules are packaged"
+          for sym in SpeechPlugin micPermission AppsPlugin UpdatePlugin UpdateStatusReceiver; do
+            if grep -aq "$sym" /tmp/alldex.bin; then good "$sym is compiled in"; else bad "$sym missing from every dex"; fi
+          done
+
+          # --- manifest. Inside an APK this is binary AXML whose string pool is
+          #     UTF-16, so a plain grep finds NOTHING (not even RECORD_AUDIO).
+          #     Dropping the NUL bytes turns it back into greppable ASCII.
+          unzip -p "$APK" AndroidManifest.xml | tr -d '\0' > /tmp/manifest.txt
+          for sym in RECORD_AUDIO android.speech.RecognitionService REQUEST_INSTALL_PACKAGES com.aevion.app.fileprovider; do
+            if grep -q "$sym" /tmp/manifest.txt; then good "manifest carries $sym"; else bad "manifest is missing $sym"; fi
+          done
+
+          # --- web assets are the version being built, derived rather than
+          #     hard-coded so a version bump cannot leave this check testing the
+          #     previous release.
+          VERSION=$(sed -n "s/.*version: *'\([0-9][0-9.]*\)'.*/\1/p" www/js/core.js | head -1)
+          VSHORT=$(printf '%s' "$VERSION" | tr -d '.')
+          echo "bundled web app version: ${VERSION:-<none>} (tag ?v=$VSHORT)"
+          if [ -z "$VSHORT" ]; then
+            bad "no version found in www/js/core.js"
+          elif unzip -p "$APK" assets/public/index.html | grep -q "?v=$VSHORT"; then
+            good "web assets are at ?v=$VSHORT"
+          else
+            bad "index.html is not at ?v=$VSHORT - likely stale after cap sync"
+          fi
+
+          if unzip -p "$APK" assets/public/js/core.js | grep -q 'e && e.detail'; then
+            good "the event-payload fix is in core.js"
+          else
+            bad "event-payload fix missing from core.js"
+          fi
+
+          for f in js/providers.js js/tools.js js/memory.js; do
+            if unzip -p "$APK" "assets/public/$f" | grep -q 'Aevion'; then good "$f is packaged"; else bad "$f missing from the APK"; fi
+          done
+
+          if [ -n "$FAILED" ]; then
+            echo "::error title=APK verification failed::${FAILED}"
+            exit 1
+          fi
+          good "every check passed"
 
           echo "=== verification complete — APK is safe to download ==="
 

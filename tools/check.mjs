@@ -174,7 +174,12 @@ check('service worker cache version matches package.json', () => {
 });
 check('CI workflow verifies the current asset version', () => {
   const wf = read('.github/workflows/build-apk.yml');
-  return wf.includes(`?v=${vShort}`) ? null : `workflow still checks a different ?v= than v=${vShort}`;
+  // The workflow derives the tag from the bundled core.js (VSHORT) rather than
+  // naming one release, so a version bump cannot leave CI asserting the tag of
+  // the previous release and quietly passing.
+  return wf.includes('?v=$VSHORT') && /VSHORT=.*tr -d/.test(wf)
+    ? null
+    : `workflow no longer derives the ?v= tag from the bundled version (v=${vShort})`;
 });
 check('APK verifier checks the current version', () => {
   const ps = read('android-wrapper/verify-apk.ps1');
