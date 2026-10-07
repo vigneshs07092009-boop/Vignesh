@@ -1,6 +1,6 @@
 {
   "name": "aevion",
-  "version": "0.6.8",
+  "version": "0.6.9",
   "private": true,
   "description": "Aevion — private, local-first AI assistant. Zero runtime dependencies; Node is only used for tests and static checks.",
   "license": "MIT",

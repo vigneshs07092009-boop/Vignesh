@@ -1,5 +1,28 @@
 # Aevion — Technical Changelog
 
+## 0.6.9 — an update that proves what it is, shows its work, and asks at the right moments
+
+### Added: a real update dialog
+- Settings' App-updates card said what was available; it never *asked*. There is now a dialog that does the asking, in the app's own design language (the same card, tokens and buttons as the confirmation dialog): **New version available**, current version, new version, **What's new** from the manifest's `note`, and Update / Later. It is the only place an update can start, so there is one place to look and one place to reason about.
+- **Later means a day**, not forever: the offer returns tomorrow. A required update has no Later button at all — a door, not a suggestion.
+- **Progress is told honestly.** The bar follows `percent` when the server sends a Content-Length and shows the bytes downloaded when it does not, because pretending to know a percentage that was never sent is worse than saying "2.1 MB so far".
+
+### Added: the download is proved to be *this* app, not just the published file
+- The checksum already proved the file was the one update.json described. It did not prove the file was **Aevion on this device**. Now, before Android is asked anything, the staged APK is asked what it is: which package it declares (must be `com.aevion.app` — otherwise the "update" would install a second app beside this one, the exact failure the spec forbids), which versionCode it carries (must match what the manifest promised, and must be strictly higher than what is installed), and **which certificate signed it** (must be the same key). Android enforces the last two by itself, but only after showing the user an install dialog that then fails; asking first turns a cryptic installer error into a sentence.
+- Anything that fails is **deleted**, not left in the cache, and each refusal carries its own code — `identity`, `signature`, `downgrade`, `storage`, `download`, `checksum`, `install` — so the UI can say which one happened instead of "it didn't work".
+- **Free storage is checked before a byte is written.** The APK is staged in the app's private cache, and the check asks for the file's size plus a margin, so the failure reads as "this device has 480 MB spare, the update needs 8.5 MB" rather than a half-finished write.
+
+### Added: mandatory updates, and a supported floor
+- The manifest gains `mandatory` and now *enforces* `minVersionCode`, which it previously only carried: a build older than the floor the publisher still supports is treated as required even when the flag is absent. Two independent claims, either is enough — a manifest that forgets the flag cannot leave someone stranded on an unsupported build. Both are optional, and a malformed value is ignored rather than fatal: a typo in one field must not take the whole update channel down.
+
+### Added: the check runs by itself
+- Boot already checked once, quietly. Now `startAutoCheck` covers the three moments that matter: **boot**, **every return to the foreground** (a phone app is backgrounded and resumed constantly, and that resume is when a stale build is most obvious), and a **half-hourly heartbeat** while the app stays open. All three go through the same 6-hour floor, refuse to run offline, never install anything, and stay silent while a deferral is live.
+- Every failure the spec names now has its own honest answer: no internet (its own state, not a generic error), interrupted download (network error / timeout), invalid APK (checksum), incompatible APK (package, signer or version), insufficient storage (free-space probe), user cancels (Android's dialog is the gate and the refusal is reported back), server unavailable (HTTP status, surfaced with the status text).
+
+### Changed
+- Version 0.6.9 everywhere (`core.js`, `package.json`, `sw.js` cache `aevion-v0.6.9`, all 23 `?v=069` tags); `tools/check.mjs` still fails the build when any of them disagree, and gained three guards for this release: the dialog must keep current version, new version, What's new, a movable progress bar and a hidden-Later-when-required; the native side must keep the package, signer, version and storage checks; the automatic check must stay periodic, resume-aware and deferral-respecting.
+- `tests/update.test.mjs` grows from 27 to 50 tests, all of it on things that can silently regress: mandatory and the floor, a malformed flag being ignored, `deferLater` refusing a required update, progress arithmetic (half the bytes = half the bar), a progress callback that throws not breaking a download, the version/size the bridge is told to expect, each native refusal code reaching the caller with its own words, and the auto-check offering a newer build but never pushing at someone who chose Later.
+
 ## 0.6.8 — the way back in, a CI build that finally works, and a server that is simply there
 
 ### Added: "Import a backup" — the twin that was missing

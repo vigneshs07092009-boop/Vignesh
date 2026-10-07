@@ -25,10 +25,19 @@
  *
  * The update source is a single static JSON committed to this repo under
  *   downloads/ and served by raw.githubusercontent.com (open CORS, no server):
- *   { "versionCode": 6006, "versionName": "0.6.6",
- *     "downloadUrl": "https://raw.githubusercontent.com/.../main/downloads/Aevion-0.6.6.apk",
- *     "fileSha256": "ebe1704b...", "minVersionCode": 0,
- *     "note": "optional one-line changelog for the user" }
+ *   { "versionCode": 6009, "versionName": "0.6.9",
+ *     "downloadUrl": "https://raw.githubusercontent.com/.../main/downloads/Aevion-0.6.9.apk",
+ *     "fileSha256": "...", "minVersionCode": 0,
+ *     "mandatory": false,
+ *     "note": "what changed, shown as What's new" }
+ *
+ *   mandatory     true = this build must be taken before the app will run
+ *                 happily; "Later" disappears. It is ALSO implied without
+ *                 the flag: any install older than minVersionCode is
+ *                 mandatory by definition, because the publisher has
+ *                 declared everything below it unsupported.
+ *   minVersionCode  the oldest install that may go on talking to the
+ *                 update source unchanged. 0 means "no floor".
  * The build script writes this file alongside the signed APK; the
  * update flow reads it, verifies the SHA-256 of the download against
  * fileSha256, and only then offers the install. The SHA is what makes
@@ -67,10 +76,12 @@
      updates — which is the whole point of an in-place update. */
   U.updateUrlKey = 'updateUrl'
   U.lastCheckedKey = 'updateCheckedAt'   // ms timestamp of the last completed check
-  U.pendingKey = 'updatePending'         // { versionCode, versionName, downloadUrl, fileSha256, note, t }
+  U.pendingKey = 'updatePending'         // { versionCode, versionName, downloadUrl, fileSha256, note, mandatory, t }
   U.deferredKey = 'updateDeferredUntil'  // ms timestamp until which reminders are suppressed
 
-  const CHECK_INTERVAL_MS = 6 * 3600 * 1000   // never auto-check more often than every 6 hours
+  const CHECK_INTERVAL_MS = 6 * 3600 * 1000     // never auto-check more often than every 6 hours
+  const AUTO_REPEAT_MS = 30 * 60 * 1000         // while the app is open, look again this often
+  const LATER_MS = 24 * 3600 * 1000             // what the "Later" button means: a day, not forever
 
   /* ---------- settings helpers ----------
      Aevion has no settings getter — the settings object IS the API
@@ -169,6 +180,16 @@
       throw new Error('update.json is missing a valid https downloadUrl')
     if (typeof body.fileSha256 !== 'string' || !/^[0-9a-fA-F]{64}$/.test(body.fileSha256))
       throw new Error('update.json is missing a valid fileSha256 (64 hex chars)')
+
+    /* Both of these are optional, and both are decisions the publisher
+       makes, not the app: 'mandatory' forces it, 'minVersionCode' is the
+       oldest build that is still supported at all. A malformed value is
+       treated as absent rather than fatal — a typo in one field must not
+       take the whole update channel down. */
+    body.mandatory = body.mandatory === true
+    body.minVersionCode = (typeof body.minVersionCode === 'number'
+      && isFinite(body.minVersionCode) && body.minVersionCode >= 0)
+      ? Math.floor(body.minVersionCode) : 0
     return body
   }
 
@@ -179,6 +200,11 @@
     var current = U.currentVersionCode()
     var newer = remote.versionCode > current
     var older = remote.versionCode < current
+    /* Mandatory when the publisher said so, or when this install has fallen
+       below the floor they support. Two independent claims, either is
+       enough — and the floor cannot be talked away by a "Later" tap. */
+    var belowFloor = remote.minVersionCode > 0 && current < remote.minVersionCode
+    var mandatory = newer && (remote.mandatory === true || belowFloor)
     return {
       currentVersionName: U._nativeVersionName || U.currentVersionName(),
       currentVersionCode: current,
@@ -186,6 +212,9 @@
       isNewer: newer,
       isOlder: older,
       isSame: !newer && !older,
+      mandatory: mandatory,
+      belowFloor: belowFloor,
+      minVersionCode: remote.minVersionCode,
       /* An install is only ever offered for a *newer* version that
          carries both a download URL and a checksum — an "update" that
          is missing either is a manifest mistake, not an offer. */
@@ -242,6 +271,7 @@
           downloadUrl: latest.remote.downloadUrl,
           fileSha256: latest.remote.fileSha256,
           note: typeof latest.remote.note === 'string' ? latest.remote.note : '',
+          mandatory: latest.mandatory === true,
           t: Date.now()
         })
         Aevion.emit('update:new-version', latest)
@@ -263,11 +293,17 @@
      resolves with base64 the native bridge can carry into Java. On the
      web this refuses: a browser tab cannot stash a file and install it
      silently, and pretending otherwise would be a lie. */
-  U.downloadApk = async function () {
+  U.downloadApk = async function (opts) {
     if (!U.isAndroid()) throw new Error('Update downloads are only available inside the Aevion Android app — a browser tab cannot install an APK.')
     var pending = getSetting(U.pendingKey, null)
     if (!pending || !pending.downloadUrl || !pending.fileSha256)
       throw new Error('No update is pending — check for a newer version first.')
+    /* Offline is its own answer, not a generic "download failed": there is
+       nothing wrong with the update, the phone just has no network. */
+    if (typeof navigator !== 'undefined' && !navigator.onLine)
+      throw new Error('No internet right now — the update will download once the connection is back.')
+
+    var onProgress = (opts && typeof opts.onProgress === 'function') ? opts.onProgress : null
 
     var t0 = Date.now()
     var bytes = await new Promise(function (resolve, reject) {
@@ -275,6 +311,23 @@
       xhr.open('GET', pending.downloadUrl, true)
       xhr.responseType = 'arraybuffer'
       xhr.timeout = 7 * 60 * 1000   // 7 minutes — a 5 MB APK can take a while on a slow link
+
+      /* Progress is the difference between a frozen app and a moving bar.
+         lengthComputable is false when the server sends no Content-Length,
+         in which case the UI is told the bytes but not a percentage. */
+      if (onProgress) {
+        xhr.addEventListener('progress', function (e) {
+          try {
+            var total = (e && e.lengthComputable && e.total) ? e.total : 0
+            onProgress({
+              loaded: (e && e.loaded) || 0,
+              total: total,
+              percent: total ? Math.min(100, Math.round(((e && e.loaded) || 0) / total * 100)) : null
+            })
+          } catch (ignore) { /* a progress callback must never break a download */ }
+        })
+      }
+
       xhr.addEventListener('load', function () {
         if (xhr.status !== 200) return reject(new Error('Download failed — server returned ' + xhr.status))
         var b = new Uint8Array(xhr.response)
@@ -336,7 +389,7 @@
     }
 
     var download
-    try { download = await U.downloadApk() } catch (e) {
+    try { download = await U.downloadApk({ onProgress: o.onProgress }) } catch (e) {
       return { ok: false, code: 'download', reason: (e && e.message) || String(e) }
     }
 
@@ -350,6 +403,11 @@
       r = await plugin.install({
         base64: download.base64,
         expectedSha256: download.expectedSha256,
+        /* The version the manifest promised. The native side compares it with
+           what the file itself says, so a swapped download cannot pass as the
+           release it claims to be. */
+        expectedVersionCode: download.versionCode,
+        sizeBytes: download.sizeBytes,
         allowDowngrade: false
       })
     } catch (e) {
@@ -361,7 +419,27 @@
       Aevion.emit('update:installed', { versionCode: download.versionCode, versionName: download.versionName })
       return { ok: true, versionCode: download.versionCode, versionName: download.versionName }
     }
-    return { ok: false, code: 'install-rejected', reason: (r && r.reason) || 'The install was not accepted.' }
+    /* The native side names what was wrong. Its words are better than
+       anything invented here, so pass its reason through — only the code
+       is remapped, for callers that branch on it. */
+    var code = (r && r.code) ? r.code : 'install-rejected'
+    return { ok: false, code: code, reason: (r && r.reason) || 'The install was not accepted.' }
+  }
+
+  /* ---------- the "Later" button ---------- */
+
+  /* A day of quiet, not a dismissal: the offer comes back tomorrow, and a
+     pending install can never be deferred away when the publisher marked it
+     mandatory (or when this build is below the supported floor). */
+  U.deferLater = function () {
+    if (U.isMandatory()) return { ok: false, reason: 'This update is required — there is nothing to postpone.' }
+    U.deferUntil(LATER_MS)
+    return { ok: true, until: Date.now() + LATER_MS }
+  }
+
+  U.isMandatory = function () {
+    var pending = getSetting(U.pendingKey, null)
+    return !!(pending && pending.mandatory === true)
   }
 
   /* ---------- deferred reminder ---------- */
@@ -378,6 +456,60 @@
     return true
   }
 
+  /* ---------- the automatic check (boot, resume, and a slow heartbeat) ---------- */
+
+  /* "Check for updates when appropriate" has three moments that matter, and
+     this wires all three:
+
+       1. boot            — once, quietly, already done by the app
+       2. coming back     — a phone app is backgrounded and resumed constantly,
+                            and that resume is exactly when a user will notice
+                            a stale build
+       3. every half hour — while the app is genuinely open, look again, which
+                            is how a new release reaches someone who leaves the
+                            app running
+
+     Both (2) and (3) go through checkForUpdate, which keeps its own 6-hour
+     floor, refuses to run offline, and never installs anything. A person who
+     deferred the offer is respected: the check still runs, but nothing is
+     pushed at them until the deferral expires. Returns a stop() function. */
+  U.startAutoCheck = function (opts) {
+    var o = opts || {}
+    var timer = null
+    var stopped = false
+
+    function tick(why) {
+      if (stopped) return
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden' && why === 'heartbeat') return
+      U.checkForUpdate({ quiet: true }).then(function (r) {
+        /* Only surface something when there is genuinely something to
+           surface and the user is not in a timed-out mode. */
+        if (r && r.state === 'newer-available' && typeof o.onNewer === 'function') {
+          if (!U.isDeferred()) o.onNewer(r.latest)
+        }
+      }).catch(function () { /* an automatic check that fails is not news */ })
+    }
+
+    function onVisible() {
+      if (typeof document === 'undefined') return
+      if (document.visibilityState === 'visible') tick('resume')
+    }
+
+    tick('boot')
+    timer = setInterval(function () { tick('heartbeat') }, AUTO_REPEAT_MS)
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('visibilitychange', onVisible)
+    }
+
+    return function stop() {
+      stopped = true
+      if (timer) clearInterval(timer)
+      if (typeof document !== 'undefined' && document.removeEventListener) {
+        document.removeEventListener('visibilitychange', onVisible)
+      }
+    }
+  }
+
   /* ---------- report (for boot chat + the automation report) ---------- */
 
   U.report = function () {
@@ -388,8 +520,14 @@
       currentVersionName: U._nativeVersionName || U.currentVersionName(),
       currentVersionCode: U.currentVersionCode(),
       updateUrl: getSetting(U.updateUrlKey, '') || DEFAULT_UPDATE_URL,
-      pending: pending ? { versionCode: pending.versionCode, versionName: pending.versionName, note: pending.note || '' } : null,
-      deferred: U.isDeferred()
+      pending: pending ? {
+        versionCode: pending.versionCode,
+        versionName: pending.versionName,
+        note: pending.note || '',
+        mandatory: pending.mandatory === true
+      } : null,
+      deferred: U.isDeferred(),
+      mandatory: U.isMandatory()
     }
   }
 

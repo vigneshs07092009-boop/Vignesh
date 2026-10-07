@@ -7,8 +7,8 @@
 <title>Aevion — Private AI Assistant</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/themes.css?v=068">
-<link rel="stylesheet" href="css/style.css?v=068">
+<link rel="stylesheet" href="css/themes.css?v=069">
+<link rel="stylesheet" href="css/style.css?v=069">
 </head>
 <body>
 <div id="boot" class="boot">
@@ -594,28 +594,60 @@
   </div>
 </div>
 
+<!-- Update dialog: the whole self-update story in one place. It appears when a
+     newer signed build exists, and it is the only place an update can start.
+     "Update" means: download, verify against the published checksum AND the
+     signing certificate, then hand the file to Android's own installer. Two
+     approvals, no silent path — and "Later" is hidden when the publisher (or
+     the minimum supported version) makes the update required. -->
+<div id="updateModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-title" id="updateTitle">New version available</div>
+    <div class="upd-versions">
+      <div>
+        <div class="upd-k">Current version</div>
+        <div class="v" id="updateCurrent">—</div>
+      </div>
+      <div>
+        <div class="upd-k">New version</div>
+        <div class="v" id="updateNewVersion">—</div>
+      </div>
+    </div>
+    <div class="upd-required hidden" id="updateRequired"></div>
+    <div class="upd-k">What's new</div>
+    <div class="upd-whatsnew" id="updateWhatsNew">—</div>
+    <div class="upd-progress" id="updateProgressWrap"><i id="updateProgressBar"></i></div>
+    <div class="muted small" id="updateStatus"></div>
+    <div class="row">
+      <button class="btn primary" id="updateNow">Update</button>
+      <button class="btn" id="updateLater">Later</button>
+    </div>
+    <p class="muted small" id="updateFine">The APK is checked against the checksum published with it and against the key that signed the Aevion already on this device, then Android asks you to approve the install. Your chats, memory and settings stay exactly where they are.</p>
+  </div>
+</div>
+
 <div id="toast"></div>
 
-<script src="js/core.js?v=068"></script>
-<script src="js/theme.js?v=068"></script>
-<script src="js/nlu.js?v=068"></script>
-<script src="js/brain.js?v=068"></script>
-<script src="js/skills.js?v=068"></script>
-<script src="js/memory.js?v=068"></script>
-<script src="js/tools.js?v=068"></script>
-<script src="js/attach.js?v=068"></script>
-<script src="js/evolve.js?v=068"></script>
-<script src="js/plugins.js?v=068"></script>
-<script src="js/voices.js?v=068"></script>
-<script src="js/voice.js?v=068"></script>
-<script src="js/wake.js?v=068"></script>
-<script src="js/providers.js?v=068"></script>
-<script src="js/online.js?v=068"></script>  <script src="js/webllm.js?v=068"></script>
-  <script src="js/setup.js?v=068"></script>
-<script src="js/apps.js?v=068"></script>
-<script src="js/markdown.js?v=068"></script>
-<script src="js/app.js?v=068"></script>
-<script src="js/update.js?v=068"></script>
-<script src="js/plugins/hello-world.js?v=068"></script>
+<script src="js/core.js?v=069"></script>
+<script src="js/theme.js?v=069"></script>
+<script src="js/nlu.js?v=069"></script>
+<script src="js/brain.js?v=069"></script>
+<script src="js/skills.js?v=069"></script>
+<script src="js/memory.js?v=069"></script>
+<script src="js/tools.js?v=069"></script>
+<script src="js/attach.js?v=069"></script>
+<script src="js/evolve.js?v=069"></script>
+<script src="js/plugins.js?v=069"></script>
+<script src="js/voices.js?v=069"></script>
+<script src="js/voice.js?v=069"></script>
+<script src="js/wake.js?v=069"></script>
+<script src="js/providers.js?v=069"></script>
+<script src="js/online.js?v=069"></script>  <script src="js/webllm.js?v=069"></script>
+  <script src="js/setup.js?v=069"></script>
+<script src="js/apps.js?v=069"></script>
+<script src="js/markdown.js?v=069"></script>
+<script src="js/app.js?v=069"></script>
+<script src="js/update.js?v=069"></script>
+<script src="js/plugins/hello-world.js?v=069"></script>
 </body>
 </html>

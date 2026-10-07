@@ -5,8 +5,11 @@ import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
+import android.content.pm.Signature;
+import android.content.pm.SigningInfo;
 import android.net.Uri;
 import android.os.Build;
+import android.os.StatFs;
 
 import androidx.core.content.FileProvider;
 
@@ -22,6 +25,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.Locale;
 
 /**
@@ -44,13 +48,23 @@ import java.util.Locale;
  * a deliberate, visible, one-time act, never a background step.
  *
  * API (reachable as window.Capacitor.Plugins.Update):
- *   meta()  -> { versionCode: 6005, versionName: "0.6.5" }
- *   install({ base64, expectedSha256 })
- *           -> { ok: true, reason }  |  { ok: false, reason }
+ *   meta()  -> { versionCode: 6009, versionName: "0.6.9" }
+ *   install({ base64, expectedSha256, expectedVersionCode, sizeBytes })
+ *           -> { ok: true, reason }
+ *            | { ok: false, code, reason }   code is one of
+ *              download | checksum | storage | identity | signature |
+ *              downgrade | install
  *
- * Downgrades need no special handling here: the platform itself refuses a
- * session whose versionCode is lower than the installed one, and the same
- * signature requirement makes an impostor impossible.
+ * Before a single byte of a session is written, the staged file is asked
+ * what it actually is: which package it declares, which version, and which
+ * certificate signed it. All three must answer the same way the installed
+ * app would — same applicationId, a higher versionCode, and the SAME
+ * signing certificate. Android would enforce the last two itself, but then
+ * the user would meet a cryptic installer error; asking first turns it into
+ * a sentence. A file that fails any check is deleted, not kept around.
+ *
+ * Downgrades are refused here as well as by the platform: versionCode must
+ * strictly increase, which is what makes an update an update.
  */
 @CapacitorPlugin(name = "Update")
 public class UpdatePlugin extends Plugin {
@@ -84,10 +98,12 @@ public class UpdatePlugin extends Plugin {
     public void install(PluginCall call) {
         String b64 = call.getString("base64");
         String expected = call.getString("expectedSha256");
+        Integer expectVc = call.getInt("expectedVersionCode");
 
         if (b64 == null || b64.length() == 0) {
             JSObject r = new JSObject();
             r.put("ok", false);
+            r.put("code", "download");
             r.put("reason", "No APK arrived — download it again from Settings → App updates.");
             call.resolve(r);
             return;
@@ -95,6 +111,7 @@ public class UpdatePlugin extends Plugin {
         if (expected == null || expected.length() != 64) {
             JSObject r = new JSObject();
             r.put("ok", false);
+            r.put("code", "checksum");
             r.put("reason", "The update arrived without a checksum to verify against — refusing it.");
             call.resolve(r);
             return;
@@ -106,6 +123,7 @@ public class UpdatePlugin extends Plugin {
         } catch (IllegalArgumentException e) {
             JSObject r = new JSObject();
             r.put("ok", false);
+            r.put("code", "download");
             r.put("reason", "The downloaded file could not be decoded — refusing it.");
             call.resolve(r);
             return;
@@ -113,6 +131,7 @@ public class UpdatePlugin extends Plugin {
         if (bytes.length < 1024) {
             JSObject r = new JSObject();
             r.put("ok", false);
+            r.put("code", "download");
             r.put("reason", "The download is far too small to be an APK — refusing it.");
             call.resolve(r);
             return;
@@ -125,7 +144,25 @@ public class UpdatePlugin extends Plugin {
         if (actual == null || !actual.equalsIgnoreCase(expected)) {
             JSObject r = new JSObject();
             r.put("ok", false);
+            r.put("code", "checksum");
             r.put("reason", "The downloaded file does not match its published checksum — refusing to install it.");
+            call.resolve(r);
+            return;
+        }
+
+        /* Storage is checked before a byte is written, because the failure
+           that matters is "the phone is full", not "the write half
+           happened". The APK is staged in the app's own cache, and Android
+           keeps a reserve it will not let apps eat into, so ask for the
+           file's size plus a margin. */
+        long free = freeCacheBytes();
+        long needed = bytes.length + (bytes.length / 2) + (2L * 1024 * 1024);
+        if (free < needed) {
+            JSObject r = new JSObject();
+            r.put("ok", false);
+            r.put("code", "storage");
+            r.put("reason", "Not enough free storage for the update — it needs about "
+                    + mb(needed) + " MB and this device has " + mb(free) + " MB spare. Free some space and try again.");
             call.resolve(r);
             return;
         }
@@ -134,7 +171,26 @@ public class UpdatePlugin extends Plugin {
         if (apk == null) {
             JSObject r = new JSObject();
             r.put("ok", false);
+            r.put("code", "storage");
             r.put("reason", "Could not stage the downloaded update inside the app's own storage.");
+            call.resolve(r);
+            return;
+        }
+
+        /* What is this file, really? Ask it before offering it to Android:
+           a genuine update is the same applicationId, a strictly higher
+           versionCode, and the same signing certificate. Android enforces
+           the last two on its own, but pre-checking turns "Install failed"
+           into a sentence a person can act on — and a file that fails here
+           is deleted rather than left in the cache. */
+        String identity = verifyUpdateApk(apk, expectVc);
+        if (identity != null) {
+            //noinspection ResultOfMethodCallIgnored
+            apk.delete();
+            JSObject r = new JSObject();
+            r.put("ok", false);
+            r.put("code", identity);
+            r.put("reason", identityReason(identity));
             call.resolve(r);
             return;
         }
@@ -161,6 +217,7 @@ public class UpdatePlugin extends Plugin {
             } catch (Exception viewFailed) {
                 JSObject r = new JSObject();
                 r.put("ok", false);
+                r.put("code", "install");
                 r.put("reason", "The system installer refused: "
                         + first(sessionFailed.getMessage(), viewFailed.getMessage()));
                 call.resolve(r);
@@ -237,6 +294,105 @@ public class UpdatePlugin extends Plugin {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /* ---------- is this file actually an update for THIS app? ---------- */
+
+    /** Returns null when the APK is a legitimate update, or a failure code
+     *  (identity / signature / downgrade) when it is not. */
+    private String verifyUpdateApk(File apk, Integer expectedVersionCode) {
+        try {
+            PackageManager pm = getContext().getPackageManager();
+            int flags = (Build.VERSION.SDK_INT >= 28)
+                    ? PackageManager.GET_SIGNING_CERTIFICATES
+                    : PackageManager.GET_SIGNATURES;
+
+            PackageInfo archive = pm.getPackageArchiveInfo(apk.getAbsolutePath(), flags);
+            if (archive == null) return "identity";
+
+            /* 1. Same application. A different package name would install a
+                  SECOND app beside Aevion instead of replacing it — the exact
+                  thing an update must never do. */
+            if (!getContext().getPackageName().equals(archive.packageName)) return "identity";
+
+            /* 2. Newer, and never older. */
+            PackageInfo mine = pm.getPackageInfo(getContext().getPackageName(), 0);
+            long incoming = (Build.VERSION.SDK_INT >= 28)
+                    ? archive.getLongVersionCode() : archive.versionCode;
+            long installed = (Build.VERSION.SDK_INT >= 28)
+                    ? mine.getLongVersionCode() : mine.versionCode;
+            if (expectedVersionCode != null && expectedVersionCode > 0
+                    && incoming != (long) expectedVersionCode) {
+                // The manifest promised one version and the file is another.
+                return "identity";
+            }
+            if (incoming <= installed) return "downgrade";
+
+            /* 3. Signed by the same key. This is the check that makes a
+                  substituted APK useless: without the private key, nothing
+                  can wear this certificate, so nothing can replace the app
+                  and inherit its data. */
+            String archiveSigners = signerDigests(archive);
+            String installedSigners = signerDigests(mine);
+            if (archiveSigners == null || installedSigners == null) return "signature";
+            if (!archiveSigners.equals(installedSigners)) return "signature";
+
+            return null;
+        } catch (Exception e) {
+            return "identity";
+        }
+    }
+
+    /** Every certificate that signed a package, as sorted SHA-256 digests.
+     *  Sorted and joined so two packages can be compared without depending
+     *  on the order the platform happened to list their signers in. */
+    private static String signerDigests(PackageInfo info) {
+        Signature[] sigs = null;
+        if (Build.VERSION.SDK_INT >= 28 && info.signingInfo != null) {
+            SigningInfo si = info.signingInfo;
+            sigs = si.hasMultipleSigners()
+                    ? si.getApkContentsSigners()
+                    : si.getSigningCertificateHistory();
+        }
+        if (sigs == null) sigs = info.signatures;
+        if (sigs == null || sigs.length == 0) return null;
+
+        String[] digests = new String[sigs.length];
+        for (int i = 0; i < sigs.length; i++) digests[i] = sha256Hex(sigs[i].toByteArray());
+        Arrays.sort(digests);
+        StringBuilder sb = new StringBuilder();
+        for (String d : digests) sb.append(d).append(';');
+        return sb.toString();
+    }
+
+    private static String identityReason(String code) {
+        if ("signature".equals(code)) {
+            return "That file is not signed by the key that signed Aevion on this device, "
+                    + "so Android would refuse it — and installing it would mean handing this "
+                    + "app's data to someone else's build. Refused.";
+        }
+        if ("downgrade".equals(code)) {
+            return "That file is not newer than the version already installed, and Android "
+                    + "refuses backwards installs. Refused.";
+        }
+        return "That file is not an Aevion update build — its package or version is not the "
+                + "one the update manifest described. Refused, and the file was deleted.";
+    }
+
+    /** Free bytes in the app's private cache. Android reserves a slice of
+     *  internal storage for itself, so this is already the honest number. */
+    private long freeCacheBytes() {
+        try {
+            File dir = getContext().getCacheDir();
+            StatFs fs = new StatFs(dir.getAbsolutePath());
+            return fs.getAvailableBytes();
+        } catch (Exception e) {
+            return Long.MAX_VALUE;   // never block an update on a failed probe
+        }
+    }
+
+    private static String mb(long bytes) {
+        return String.format(Locale.US, "%.1f", bytes / 1048576.0);
     }
 
     private static String sha256Hex(byte[] bytes) {

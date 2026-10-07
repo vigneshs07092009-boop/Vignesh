@@ -238,6 +238,54 @@ check('CI makes the Gradle wrapper executable before running it', () => {
   return /chmod \+x gradlew/.test(wf) ? null : 'the APK build step no longer chmods gradlew';
 });
 
+check('the update dialog keeps what an update must tell the user', () => {
+  const html = read('aevion/index.html');
+  const app = read('aevion/js/app.js');
+  const misses = [];
+  for (const id of ['updateModal', 'updateCurrent', 'updateNewVersion', 'updateWhatsNew',
+    'updateProgressBar', 'updateNow', 'updateLater', 'updateRequired']) {
+    if (!html.includes(`id="${id}"`)) misses.push(id);
+  }
+  // current + new version, the changelog, and a bar a download can move
+  if (!/\$\('#updateProgressBar'\)\.style\.width/.test(app)) misses.push('progress bar is never moved');
+  if (!/updateLater'\)\.classList\.toggle\('hidden', required\)/.test(app)) misses.push('Later is not hidden when the update is required');
+  if (!/rem\.note/.test(app)) misses.push('release notes are not shown');
+  if (!/Aevion\.update\.installApk\(\{ consent: true, onProgress/.test(app)) misses.push('the Update button does not start a consented install');
+  return misses.length ? `missing: ${misses.join(', ')}` : null;
+});
+
+check('the update is proved to be an Aevion update before it is installed', () => {
+  // A checksum proves the file is the one published. These prove the file is
+  // also THE APP: same package, a higher versionCode, same signing
+  // certificate. Android enforces the last two itself, but only after the
+  // user has already been shown an install dialog that then fails.
+  const java = read('android-wrapper/android/app/src/main/java/com/aevion/app/UpdatePlugin.java');
+  const js = read('aevion/js/update.js');
+  const misses = [];
+  if (!java.includes('getPackageArchiveInfo')) misses.push('the APK is never asked what package it is');
+  if (!java.includes('GET_SIGNING_CERTIFICATES')) misses.push('signing certificates are never read');
+  if (!java.includes('signerDigests')) misses.push('the signer comparison is gone');
+  if (!/getPackageName\(\)\.equals\(archive\.packageName\)/.test(java)) misses.push('the package name is never compared');
+  if (!/incoming <= installed/.test(java)) misses.push('downgrades are no longer refused');
+  if (!java.includes('StatFs')) misses.push('free storage is never checked before writing the APK');
+  if (!java.includes('expectedVersionCode')) misses.push('the promised versionCode is not compared');
+  if (!js.includes('expectedVersionCode: download.versionCode')) misses.push('the web side does not send the promised versionCode');
+  if (!js.includes('sizeBytes: download.sizeBytes')) misses.push('the web side does not send the size');
+  return misses.length ? `missing: ${misses.join(', ')}` : null;
+});
+
+check('the automatic update check is periodic, and respects a deferral', () => {
+  const js = read('aevion/js/update.js');
+  const app = read('aevion/js/app.js');
+  const misses = [];
+  if (!js.includes('setInterval')) misses.push('no repeating check while the app is open');
+  if (!js.includes('visibilitychange')) misses.push('no check when the app comes back to the foreground');
+  if (!/isDeferred\(\).*return|if \(!U\.isDeferred\(\)\)/.test(js)) misses.push('a deferred offer is not respected');
+  if (!app.includes('startAutoCheck')) misses.push('the app never starts the automatic check');
+  if (!/!navigator\.onLine/.test(js)) misses.push('downloads no longer distinguish "no internet"');
+  return misses.length ? `missing: ${misses.join(', ')}` : null;
+});
+
 check('the backup restore keeps its safety chain', () => {
   const app = read('aevion/js/app.js');
   const html = read('aevion/index.html');

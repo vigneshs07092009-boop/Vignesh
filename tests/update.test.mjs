@@ -352,3 +352,203 @@ test('update: deferUntil rejects nonsense windows', () => {
   assert.throws(() => Aevion.update.deferUntil(-5));
   assert.throws(() => Aevion.update.deferUntil('soon'));
 });
+
+/* ---------- mandatory updates and the supported floor ---------- */
+
+test('update: the module exposes the new update surface', () => {
+  const { Aevion } = createApp();
+  for (const fn of ['startAutoCheck', 'deferLater', 'isMandatory']) {
+    assert.equal(typeof Aevion.update[fn], 'function', `Aevion.update.${fn} missing`);
+  }
+});
+
+test('update: a manifest may mark an update mandatory — and "Later" then refuses', async () => {
+  const fetch = manifestFetch({ ...oneNewer, mandatory: true });
+  const { Aevion } = app({}, { fetch });
+  const l = await Aevion.update.latest();
+  assert.equal(l.isNewer, true);
+  assert.equal(l.mandatory, true, 'the publisher said mandatory');
+  assert.equal(l.belowFloor, false, 'mandatory is not the same claim as below-the-floor');
+
+  await Aevion.update.checkForUpdate({ force: true });
+  assert.equal(Aevion.update.isMandatory(), true, 'the pending record remembers why it is required');
+  const later = Aevion.update.deferLater();
+  assert.equal(later.ok, false, 'a required update cannot be postponed');
+  assert.match(later.reason, /required/i);
+  assert.equal(Aevion.update.isDeferred(), false, 'and no deferral window was opened');
+});
+
+test('update: minVersionCode makes an old install mandatory even without the flag', async () => {
+  /* THIS build is below the floor the publisher still supports: the update
+     must be required, and that is a decision the app derives rather than
+     trusts — a manifest that forgets the flag cannot leave a user stranded
+     on an unsupported build. */
+  const fetch = manifestFetch({ ...oneNewer, minVersionCode: APP_CODE + 10 });
+  const { Aevion } = app({}, { fetch });
+  const l = await Aevion.update.latest();
+  assert.equal(l.belowFloor, true, 'this install is under the supported floor');
+  assert.equal(l.mandatory, true);
+  assert.equal(l.minVersionCode, APP_CODE + 10);
+});
+
+test('update: an install above the floor is not mandatory by accident', async () => {
+  const fetch = manifestFetch({ ...oneNewer, minVersionCode: 1, mandatory: false });
+  const { Aevion } = app({}, { fetch });
+  const l = await Aevion.update.latest();
+  assert.equal(l.belowFloor, false);
+  assert.equal(l.mandatory, false, 'optional means optional');
+});
+
+test('update: a malformed mandatory/minVersionCode is ignored, not fatal', async () => {
+  const fetch = manifestFetch({ ...oneNewer, mandatory: 'yes', minVersionCode: -3 });
+  const { Aevion } = app({}, { fetch });
+  const l = await Aevion.update.latest();
+  assert.equal(l.mandatory, false, 'a non-boolean is not a yes');
+  assert.equal(l.minVersionCode, 0, 'a negative floor is not a floor');
+});
+
+test('update: deferLater opens a day-long window when the update is optional', async () => {
+  const fetch = manifestFetch(oneNewer);
+  const { Aevion } = app({}, { fetch });
+  await Aevion.update.checkForUpdate({ force: true });
+  assert.equal(Aevion.update.isMandatory(), false);
+  const r = Aevion.update.deferLater();
+  assert.equal(r.ok, true);
+  assert.equal(Aevion.update.isDeferred(), true);
+  const left = Aevion.settings.updateDeferredUntil - Date.now();
+  assert.ok(left > 23 * 3600 * 1000 && left <= 24 * 3600 * 1000, 'a day, not forever: ' + left);
+});
+
+/* ---------- download progress ---------- */
+
+/* Fires a real 'progress' event before 'load', the way the platform does. */
+function progressXhr(payloadBytes, total = payloadBytes.length) {
+  function XHR() {}
+  XHR.prototype.open = function () {};
+  XHR.prototype.send = function () {
+    const buf = new ArrayBuffer(payloadBytes.length);
+    new Uint8Array(buf).set(payloadBytes);
+    this.response = buf;
+    this.status = 200;
+    setTimeout(() => {
+      if (this.listeners.progress) {
+        this.listeners.progress({ lengthComputable: true, loaded: Math.floor(total / 2), total });
+      }
+      setTimeout(() => this.listeners.load(), 0);
+    }, 0);
+  };
+  XHR.prototype.addEventListener = function (type, fn) { this.listeners[type] = fn; };
+  XHR.prototype.listeners = {};
+  return XHR;
+}
+
+test('update: downloadApk reports progress that a bar can follow', async () => {
+  const bridge = fakeBridge();
+  const { Aevion, sandbox } = app({}, { globals: bridge.value });
+  sandbox.XMLHttpRequest = progressXhr(APK_BYTES);
+  Aevion.set(Aevion.update.pendingKey, {
+    versionCode: 6009, versionName: '0.6.9',
+    downloadUrl: 'https://aevion.app/downloads/Aevion-0.6.9.apk',
+    fileSha256: APK_SHA, note: '', t: Date.now()
+  });
+
+  const seen = [];
+  const d = await Aevion.update.downloadApk({ onProgress: p => seen.push(p) });
+  assert.ok(seen.length >= 1, 'at least one progress event reached the caller');
+  assert.equal(seen[0].loaded, APK_BYTES.length / 2);
+  assert.equal(seen[0].total, APK_BYTES.length);
+  assert.equal(seen[0].percent, 50, 'half the bytes -> half the bar');
+  assert.equal(d.sizeBytes, APK_BYTES.length, 'and the size is reported for the storage check');
+});
+
+test('update: a progress callback that throws cannot break the download', async () => {
+  const bridge = fakeBridge();
+  const { Aevion, sandbox } = app({}, { globals: bridge.value });
+  sandbox.XMLHttpRequest = progressXhr(APK_BYTES);
+  Aevion.set(Aevion.update.pendingKey, {
+    versionCode: 6009, versionName: '0.6.9',
+    downloadUrl: 'https://aevion.app/downloads/Aevion-0.6.9.apk',
+    fileSha256: APK_SHA, note: '', t: Date.now()
+  });
+  const d = await Aevion.update.downloadApk({ onProgress: () => { throw new Error('painter exploded'); } });
+  assert.equal(d.sizeBytes, APK_BYTES.length, 'the file still arrived intact');
+});
+
+/* ---------- what the native side is told, and what it can answer ---------- */
+
+test('update: the bridge is told which version and size it should expect', async () => {
+  const bridge = fakeBridge({ ok: true });
+  const { Aevion, sandbox } = app({}, { globals: bridge.value });
+  sandbox.XMLHttpRequest = fakeXhr(APK_BYTES);
+  Aevion.update._nativeVersionCode = 6008;
+  await Aevion.evolve.set(true, { consent: true });
+  Aevion.set(Aevion.update.pendingKey, {
+    versionCode: 6009, versionName: '0.6.9',
+    downloadUrl: 'https://aevion.app/downloads/Aevion-0.6.9.apk',
+    fileSha256: APK_SHA, note: '', t: Date.now()
+  });
+  const r = await Aevion.update.installApk({ consent: true });
+  assert.equal(r.ok, true);
+  const sent = bridge.installs[0];
+  assert.equal(sent.expectedVersionCode, 6009, 'Java is told which build the file must claim to be');
+  assert.equal(sent.sizeBytes, APK_BYTES.length, 'and how big it is');
+});
+
+for (const [code, pattern] of [
+  ['signature', /signed by the key/],
+  ['storage', /free storage/],
+  ['downgrade', /not newer/],
+  ['identity', /not an Aevion update build/]
+]) {
+  test(`update: a native "${code}" refusal reaches the caller with its own words`, async () => {
+    const bridge = fakeBridge({ ok: false, code, reason: 'native words' });
+    const { Aevion, sandbox } = app({}, { globals: bridge.value });
+    sandbox.XMLHttpRequest = fakeXhr(APK_BYTES);
+    Aevion.update._nativeVersionCode = 6008;
+    await Aevion.evolve.set(true, { consent: true });
+    Aevion.set(Aevion.update.pendingKey, {
+      versionCode: 6009, versionName: '0.6.9',
+      downloadUrl: 'https://aevion.app/downloads/Aevion-0.6.9.apk',
+      fileSha256: APK_SHA, note: '', t: Date.now()
+    });
+    const r = await Aevion.update.installApk({ consent: true });
+    assert.equal(r.ok, false);
+    assert.equal(r.code, code, 'the code is passed through for callers that branch on it');
+    assert.equal(r.reason, 'native words', 'and so is the reason, which is the useful part');
+  });
+}
+
+/* ---------- the automatic check ---------- */
+
+test('update: startAutoCheck offers a newer build, and stop() ends it', async () => {
+  const fetch = manifestFetch(oneNewer);
+  const { Aevion } = app({}, { fetch });
+  let offered = 0;
+  const stop = Aevion.update.startAutoCheck({ onNewer: () => { offered++; } });
+  await new Promise(r => setTimeout(r, 30));
+  assert.ok(offered >= 1, 'a newer build was found at boot without anyone pressing anything');
+  assert.equal(typeof stop, 'function');
+  stop();
+});
+
+test('update: startAutoCheck never pushes at someone who chose Later', async () => {
+  const fetch = manifestFetch(oneNewer);
+  const { Aevion } = app({}, { fetch });
+  await Aevion.update.checkForUpdate({ force: true });   // finds it
+  Aevion.update.deferLater();                            // user says later
+  let offered = 0;
+  const stop = Aevion.update.startAutoCheck({ onNewer: () => { offered++; } });
+  await new Promise(r => setTimeout(r, 30));
+  stop();
+  assert.equal(offered, 0, 'the offer waits for the deferral to expire');
+});
+
+test('update: startAutoCheck stays quiet when the app is already current', async () => {
+  const fetch = manifestFetch(atAppVersion);
+  const { Aevion } = app({}, { fetch });
+  let offered = 0;
+  const stop = Aevion.update.startAutoCheck({ onNewer: () => { offered++; } });
+  await new Promise(r => setTimeout(r, 30));
+  stop();
+  assert.equal(offered, 0, 'nothing to offer, nothing offered');
+});

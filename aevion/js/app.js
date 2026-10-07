@@ -2942,7 +2942,93 @@
     }
     renderUpdate();
   };
-  Aevion.on('update:new-version', renderUpdate);
+  /* ---------- the update dialog ---------- */
+  /* One place an update can start from, and one place that shows what is
+     happening while it does. The card in Settings stays a status surface; the
+     dialog is the action. */
+  const fmtMB = n => (n / 1048576).toFixed(1) + ' MB';
+
+  function openUpdateModal(latest) {
+    if (!Aevion.update || !latest) return;
+    const rem = latest.remote || {};
+    const v = Aevion.update.report();
+    $('#updateCurrent').textContent = v.currentVersionName + ' (v' + v.currentVersionCode + ')';
+    $('#updateNewVersion').textContent = (rem.versionName || '?') + ' (v' + rem.versionCode + ')';
+    $('#updateWhatsNew').textContent = rem.note
+      ? rem.note
+      : 'No release notes were published with this build.';
+
+    /* Required when the publisher said so, or when this install has fallen
+       below the oldest version the update source still supports. A required
+       update has no Later button — a door, not a suggestion. */
+    const required = latest.mandatory === true;
+    const req = $('#updateRequired');
+    req.classList.toggle('hidden', !required);
+    if (required) {
+      req.textContent = latest.belowFloor
+        ? 'This update is required — Aevion ' + v.currentVersionName + ' is older than the oldest version this update source still supports.'
+        : 'This update is required by the publisher.';
+    }
+    $('#updateLater').classList.toggle('hidden', required);
+    $('#updateStatus').textContent = '';
+    $('#updateProgressWrap').classList.remove('on');
+    $('#updateProgressBar').style.width = '0%';
+    $('#updateNow').disabled = false;
+    $('#updateModal').classList.remove('hidden');
+  }
+
+  const closeUpdateModal = () => $('#updateModal').classList.add('hidden');
+
+  /* Download progress, told honestly: a percentage when the server sent a
+     Content-Length, and the bytes so far when it did not. */
+  function updateProgress(p) {
+    const wrap = $('#updateProgressWrap'), bar = $('#updateProgressBar');
+    wrap.classList.add('on');
+    const pct = (p && typeof p.percent === 'number') ? p.percent : null;
+    if (pct !== null) {
+      bar.style.width = pct + '%';
+      $('#updateStatus').textContent = 'Downloading… ' + pct + '%'
+        + (p.total ? ' (' + fmtMB(p.loaded) + ' of ' + fmtMB(p.total) + ')' : '');
+    } else {
+      $('#updateStatus').textContent = 'Downloading… ' + fmtMB((p && p.loaded) || 0);
+    }
+  }
+
+  $('#updateNow').onclick = async () => {
+    if (!Aevion.update) return;
+    $('#updateNow').disabled = true;
+    $('#updateStatus').textContent = 'Downloading…';
+    $('#updateProgressWrap').classList.add('on');
+
+    /* consent: true is this button. The system dialog that follows is the
+       second, mandatory approval — Android will not install without it. */
+    const res = await Aevion.update.installApk({ consent: true, onProgress: updateProgress });
+
+    $('#updateProgressWrap').classList.remove('on');
+    if (res.ok) {
+      $('#updateStatus').textContent = '✅ ' + res.versionName
+        + ' handed to Android — approve the system dialog. Your data stays.';
+      toast('✅ Aevion ' + res.versionName + ' ready — approve it in the system dialog', 6000);
+      closeUpdateModal();
+    } else {
+      $('#updateStatus').textContent = '⛔ ' + (res.reason || 'The update did not happen.');
+      $('#updateNow').disabled = false;
+    }
+    renderUpdate();
+  };
+
+  $('#updateLater').onclick = () => {
+    const r = Aevion.update.deferLater();
+    closeUpdateModal();
+    toast(r.ok ? '👍 Reminder postponed — the offer comes back tomorrow' : '⚠ ' + r.reason, 5000);
+    renderUpdate();
+  };
+
+  Aevion.on('update:new-version', latest => {
+    renderUpdate();
+    /* Never interrupt: if the user already said "later", the offer waits. */
+    if (Aevion.update && !Aevion.update.isDeferred()) openUpdateModal(latest);
+  });
   /* Fired the moment Android accepts the install session — usually the last
      thing the old version ever does before the system restarts it into the
      new one. Whatever is still painted says so plainly. */
@@ -3053,16 +3139,21 @@
       if (q.ok && q.kind !== 'local') refreshBrain(true); else renderBrainCard();
     }, 1600);
 
-    /* One quiet check a moment after boot for a newer signed update. It runs
-       only when there is actually a path to the internet, and only after the
-       first screen is painted — never before, never while locked. The check
-       itself rate-limits (6 hours), so a boot spam is impossible. */
+    /* The automatic update check, started a moment after boot — never before
+       the first screen is painted, never while locked. startAutoCheck covers
+       the three moments that matter: boot, each return to the foreground (that
+       is when a stale build is most obvious), and a half-hourly heartbeat
+       while the app stays open. All three go through the module's own 6-hour
+       floor, refuse to run offline, and never install anything: they only ever
+       raise the offer, which the user answers.
+
+       The offer it raises is the dialog; if the user already chose "later",
+       the module stays quiet until that expires. */
     setTimeout(() => {
-      /* The module itself emits 'update:new-version' only when the server
-         really has a newer signed build; the App updates card listens and
-         refreshes. Rate-limited to one automatic check per 6 hours. */
-      if (Aevion.update && Aevion.update.checkForUpdate) {
-        Aevion.update.checkForUpdate({}).catch(() => {})
+      if (Aevion.update && Aevion.update.startAutoCheck) {
+        Aevion.update.startAutoCheck({
+          onNewer: latest => { if (!Aevion.update.isDeferred()) openUpdateModal(latest); }
+        });
       }
     }, 2200);
 

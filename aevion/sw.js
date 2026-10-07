@@ -3,7 +3,7 @@
  * Strategy: network-first (updates land immediately), cache fallback
  * when offline, plus a pre-warmed cache per CACHE_VERSION.
  * ============================================================ */
-const CACHE_VERSION = 'aevion-v0.6.8';
+const CACHE_VERSION = 'aevion-v0.6.9';
 const ASSETS = [
   './',
   './index.html',
