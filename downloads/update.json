@@ -1,8 +1,8 @@
 {
-  "versionCode": 6007,
-  "versionName": "0.6.7",
-  "downloadUrl": "https://raw.githubusercontent.com/vigneshs07092009-boop/Vignesh/main/downloads/Aevion-0.6.7.apk",
-  "fileSha256": "0b03649cb41b720a74ec96a97d86f93e8ce0d8e835f5dbebbd8b97a054f1952e",
-  "minVersionCode": 0,
-  "note": "First update delivered in place: install it from Settings - App updates and nothing is uninstalled. Desktop install fixed, icons real."
+    "versionCode":  6008,
+    "versionName":  "0.6.8",
+    "downloadUrl":  "https://raw.githubusercontent.com/vigneshs07092009-boop/Vignesh/main/downloads/Aevion-0.6.8.apk",
+    "fileSha256":  "04b3b679672aa4b23a2e3c3800c56e210a265ab2a20809b33dd6fbd19c0afec0",
+    "minVersionCode":  0,
+    "note":  "Restores an imported backup, opens on one canonical door (127.0.0.1), and brings back the update check."
 }

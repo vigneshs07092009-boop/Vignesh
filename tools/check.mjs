@@ -184,6 +184,29 @@ check('APK verifier checks the current version', () => {
   return ps.includes("$vShort = $webVersion -replace") ? null : 'verify-apk.ps1 no longer derives the cache-busting tag from the bundled version';
 });
 
+check('CI runs a Node the Capacitor CLI can actually run', () => {
+  // @capacitor/cli (see android-wrapper/package-lock.json) declares engines.node.
+  // npm only warns when the engine does not match, so a too-old runner passes the
+  // install step and then the Capacitor CLI dies instantly on the sync step —
+  // which is exactly how every Build APK run failed for 20 runs in a row.
+  const lock = JSON.parse(read('android-wrapper/package-lock.json'));
+  const want = lock.packages['node_modules/@capacitor/cli'].engines.node;
+  const min = Number((want.match(/\d+/) || [0])[0]);
+  const wf = read('.github/workflows/build-apk.yml');
+  let ciMajor;
+  if (/node-version-file:\s*'\.nvmrc'/.test(wf)) {
+    ciMajor = Number(read('.nvmrc').trim().replace(/^v/, '').split('.')[0]);
+  } else {
+    const m = wf.match(/node-version:\s*'(\d+)/);
+    if (!m) return 'workflow no longer pins a Node version';
+    ciMajor = Number(m[1]);
+  }
+  if (!Number.isFinite(ciMajor)) return `.nvmrc does not name a Node major (${read('.nvmrc').trim()})`;
+  return ciMajor >= min
+    ? null
+    : `CI runs Node ${ciMajor} but @capacitor/cli needs ${want} — the sync step will fail`;
+});
+
 check('the backup restore keeps its safety chain', () => {
   const app = read('aevion/js/app.js');
   const html = read('aevion/index.html');
