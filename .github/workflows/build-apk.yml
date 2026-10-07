@@ -147,7 +147,11 @@ jobs:
             # Workflow-command escaping: % -> %25, CR -> %0D, LF -> %0A.
             # The annotation then carries the real Gradle error, wrapped, and
             # readable through the public check-run annotations API.
-            TAIL=$(tail -n 40 gradle-build.log \
+            # "What went wrong" sits ABOVE the stack trace, so a plain tail of
+            # the log returns nothing but stack frames. Take the summary block.
+            REASON=$(sed -n '/^FAILURE: Build failed/,/^\* Try:/p' gradle-build.log | head -40)
+            [ -n "$REASON" ] || REASON=$(tail -n 30 gradle-build.log)
+            TAIL=$(printf '%s\n' "$REASON" \
               | sed -e 's/%/%25/g' -e 's/\r//g' \
               | awk '{ printf "%s%%0A", $0 }')
             echo "::error title=Gradle build failed (exit $status)::${TAIL:0:3500}"
