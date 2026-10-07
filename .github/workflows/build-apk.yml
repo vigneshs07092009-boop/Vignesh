@@ -69,6 +69,24 @@ jobs:
             console.log("PASS: the runner satisfies the Capacitor CLI engine requirement");
           '
 
+          # Publish the toolchain to the job summary. The run log needs admin
+          # rights to fetch through the API, but the summary does not — so a
+          # failure can be diagnosed from anywhere instead of guessing at an
+          # empty "exit code 1".
+          if [ -n "$GITHUB_STEP_SUMMARY" ]; then
+            {
+              echo "### Runner toolchain"
+              echo ''
+              echo '```'
+              echo "node:         $(node --version)"
+              echo "java:         $(java -version 2>&1 | head -1)"
+              echo "ANDROID_HOME: $ANDROID_HOME"
+              echo "platforms:    $(ls "$ANDROID_HOME/platforms" 2>/dev/null | tr '\n' ' ')"
+              echo "build-tools:  $(ls "$ANDROID_HOME/build-tools" 2>/dev/null | tr '\n' ' ')"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # 3. Install the Capacitor toolchain into android-wrapper/
       - name: Install Capacitor dependencies
         working-directory: ./android-wrapper
@@ -104,11 +122,33 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
+
+          # A failing Gradle build prints its reason to a log nobody can read
+          # (the run log needs admin rights through the API). Tee it, and put
+          # the tail in the job summary, which is readable — so the next CI
+          # failure arrives with its own explanation.
+          set +e
+          set -o pipefail
           ./gradlew assembleDebug \
             --no-daemon \
             --console=plain \
             --stacktrace \
-            -Dorg.gradle.jvmargs="-Xmx2g"
+            -Dorg.gradle.jvmargs="-Xmx2g" 2>&1 | tee gradle-build.log
+          status=$?
+          set +o pipefail
+
+          if [ "$status" -ne 0 ]; then
+            if [ -n "$GITHUB_STEP_SUMMARY" ]; then
+              {
+                echo "### Gradle failed (exit $status)"
+                echo ''
+                echo '```'
+                tail -n 60 gradle-build.log
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+            exit "$status"
+          fi
 
       # 7. Upload the APK as a downloadable artifact (Gatehouse keeps it to you)
       - name: Upload APK artifact
@@ -128,6 +168,7 @@ jobs:
         working-directory: ./android-wrapper
         run: |
           APK=android/app/build/outputs/apk/debug/app-debug.apk
+          echo "checking the debug APK with the same eyes the release build uses"
           echo "=== verifying the freshly built APK ==="
           test -f "$APK" || { echo "APK not found at $APK"; exit 1; }
           echo "APK size: $(du -h "$APK" | cut -f1)"
